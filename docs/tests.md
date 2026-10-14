@@ -229,7 +229,8 @@ The tree itself is never changed. An integration fault runs with its own registr
 | integration/10-pipeline | no plan id is written | not ok: assertions 76, 37, 38 (an earlier attempt's result is read) |
 | integration/10-pipeline | plan refuses a files database that leaves a package out | not ok: assertions 47 to 50 |
 | integration/10-pipeline | verify runs `-Fl` over every name of the batch | not ok: assertion 50 |
-| integration/10-pipeline | plan accepts a files database with an extra package | not ok: assertion 51 |
+| integration/10-pipeline | plan refuses a files database that names a package the database does not | not ok: `a files database that names a package the database does not is planned`, `the plan names the package only the files database names` |
+| integration/10-pipeline | plan no longer compares the sha256 of a file both databases name | not ok: `a files database that names a file of the database with other bytes is refused`, `the refusal names the file` |
 | integration/10-pipeline | every `sig-refused` package excused | not ok: with no `%PGPSIG%`, a layer that is not upstream's `.sig` is not excused |
 | integration/10-pipeline | `build-repo` signs on every build | not ok: an update is planned as new files only; `latest` does not move backwards |
 | static/60-targets | five edits in a copy: a `docker.io` keyring image, a removed `# tag: aarch64`, another verify digest, renamed plan slots, a `keyring_from` that does not exist | one not ok for each edit, among them `every target verifies in the one image, on linux/amd64` |

@@ -47,10 +47,15 @@ env:
   MIRROR_REGISTRY: ghcr.io
 
 jobs:
+  # A seed pushes tens of thousands of files under GHCR's limit for one token
+  # (about 2000 requests a minute, shared by every shard), so a shard can wait
+  # long between pushes (run 38606900677: a loong64 extra shard reached 120
+  # min). The limits give it 4 h; GitHub allows 6 h for a job. A shard that
+  # still runs out keeps the results of the files that ended.
   mirror:
     if: ${{ inputs.shards != '[]' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 250
     permissions:
       contents: read
       packages: write
@@ -70,7 +75,7 @@ jobs:
       # The step ends before the job does, so the results of the files that
       # ended (results/<shard>/lines) are still uploaded below.
       - name: Mirror the shard
-        timeout-minutes: 110
+        timeout-minutes: 240
         env:
           TARGET: ${{ inputs.target }}
           SHARD_INDEX: ${{ matrix.shard }}

@@ -159,6 +159,9 @@ Source: each database downloaded from a `db_server` and read with `scripts/lib.s
 | aarch64 extra `findnewest-0.3-4/desc`: a GNU sparse member of 1271 NUL bytes; pacman lists it with every field None and cannot download it | 2026-10-14 | the database on every mirror; pacman 7.1 in the aarch64 image |
 | riscv64 extra `ntk-1.3.1001-4/desc`: a GNU sparse member of 576 NUL bytes, on every current mirror | 2026-10-14 | the database on each mirror |
 | Arch Linux ARM aarch64 `aur.files` leaves out `localepurge-0.7.3.4-1`, which `aur.db` names | 2026-10-14 | `scripts/plan` on the upstream databases |
+| Arch Linux ARM aarch64 `alarm.files` leaves out `dkms-mt7601`, `macspoof` and `sprunge`, which `alarm.db` names | 2026-10-14 | Sync run 38591019319, plan |
+| Arch Linux ARM aarch64 `extra.files` names `qemu-system-cris-9.1.2-1` (dropped from `extra.db`) and `findnewest-0.3-4` (its `extra.db` desc is NUL bytes), on fl.us, ca.us and de3 | 2026-10-15 | Sync run 38606900677, plan; `comm` of the two record lists |
+| Seed of 15 targets, run 38606900677: 12 promoted in one run; armv7h extra held by 3 files upstream rebuilt during the run, loong64 extra by 1 file of a shard that reached its 120 min limit, aarch64 extra by its `extra.files` | 2026-10-14 | `latest` manifests on GHCR |
 | loong64 extra: pacman refuses `compiler-rt18-18.1.8-1`, `x11-ssh-askpass-1.2.4.1-8` and `yt6801-dkms-1.0.28-3` (keys expired) and `python-xarray-2026.07.0-1` (no signature anywhere) | 2026-10-14 | pacman 7.1 in `archlinux:base`, `Architecture = loong64` |
 | loong64 extra: 16 packages are signed by a subkey that expires on 2026-12-31 | 2026-10-14 | the signature issuers |
 | Arch Linux ARM: one key, `68B3537F39A313B3E574D06777193F152BDBE6A6`, made every signature of the 8 targets | 2026-10-14 | the signature issuers |

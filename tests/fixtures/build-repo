@@ -36,7 +36,10 @@
 #              as Arch Linux ARM aarch64 aur.files left out localepurge-0.7.3.4-1
 #              and alarm.files dkms-mt7601 (2026-10-14)
 #   port-files-extra  as port, with port.files naming one more package,
-#              stray 1-1, that port.db does not
+#              stray 1-1, that port.db does not, as Arch Linux ARM aarch64
+#              extra.files names qemu-system-cris 9.1.2-1 (2026-10-15)
+#   port-files-conflict  as port, with port.files of another build of
+#              unsigned 1-1: the same file name with other bytes
 #   port-signed  the unsigned package of DIR (aarch64/port) signed now, beside
 #              it: the database and every other file stay as they are, as when
 #              upstream uploads a .sig late for a database that embeds none
@@ -200,13 +203,25 @@ case "$state" in
     ls -l "$repo"
     exit 0
     ;;
-  port | port-junk | port-files-missing | port-files-extra)
+  port | port-junk | port-files-missing | port-files-extra | port-files-conflict)
     mkpkg port 1-1 aarch64 1700000000 "an aarch64 package"
     mkpkg unsigned 1-1 any 1700000010 "upstream signs this nowhere" none
     mkpkg expired 1-1 any 1700000020 "signed by a key that has since expired" /out/gnupg-expired
     repo-add --quiet --include-sigs "$repo/$db.db.tar.gz" "$repo"/*.pkg.tar.zst
     case "$state" in
       port-files-missing) drop_member "$repo/$db.files.tar.gz" expired-1-1 ;;
+      port-files-conflict)
+        # The files database of another build of unsigned 1-1: the same file
+        # name with other bytes, so the two databases are of two snapshots.
+        mkdir -p "$repo/.keep" "$repo/.alt"
+        mv "$repo"/unsigned-1-1-any.pkg.tar.zst* "$repo/.keep/"
+        mkpkg unsigned 1-1 any 1700000011 "another build of unsigned" none
+        repo-add --quiet --include-sigs "$repo/.alt/x.db.tar.gz" "$repo"/*.pkg.tar.zst
+        cp "$repo/.alt/x.files.tar.gz" "$repo/$db.files.tar.gz"
+        rm -f "$repo"/unsigned-1-1-any.pkg.tar.zst*
+        mv "$repo/.keep"/* "$repo/"
+        rm -rf "$repo/.keep" "$repo/.alt"
+        ;;
       port-files-extra)
         # The files database of a repository with stray in it, and stray
         # itself nowhere else.

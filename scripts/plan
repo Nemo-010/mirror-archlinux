@@ -490,18 +490,35 @@ plan_target() {
       warn "$name: $srv/$repo.files does not read as a tar archive"
       continue
     fi
-    # Every (file, sha256) of the files database must be in the database. A
-    # files database that leaves packages out is accepted and the packages are
-    # named: upstream serves it so to its own users too (Arch Linux ARM
-    # aarch64 aur.files left out localepurge, 2026-10-14), and pacman -F only
-    # knows less. One that names a package the database does not is refused.
+    # The database decides which packages exist; the files database only
+    # describes them for pacman -F. A file name both name with other sha256
+    # values means the two are of different snapshots: refused. Drift is
+    # accepted and named: packages the files database leaves out (Arch Linux
+    # ARM aarch64 aur.files left out localepurge, 2026-10-14) and files the
+    # database does not name (aarch64 extra.files still names
+    # qemu-system-cris 9.1.2-1 that extra.db dropped, and findnewest, whose
+    # extra.db desc is NUL bytes, 2026-10-15). Upstream serves both so to its
+    # own users. More drift than FILES_DRIFT_MAX (default the larger of 16
+    # and 1% of the records) means the files database is another one.
     cut -f 1,5 "$dir/files.tsv" | sort -u > "$dir/files-pairs.txt"
     cut -f 1,5 "$dir/records.tsv" | sort -u > "$dir/db-pairs.txt"
-    comm -23 "$dir/files-pairs.txt" "$dir/db-pairs.txt" > "$dir/files-extra.txt"
+    awk -F '\t' 'FILENAME == ARGV[1] { sha[$1] = $2; next } ($1 in sha) && sha[$1] != $2' \
+      "$dir/db-pairs.txt" "$dir/files-pairs.txt" > "$dir/files-conflict.txt"
+    awk -F '\t' 'FILENAME == ARGV[1] { sha[$1] = $2; next } !($1 in sha) { print $1 }' \
+      "$dir/db-pairs.txt" "$dir/files-pairs.txt" > "$dir/files-extra.txt"
     comm -13 "$dir/files-pairs.txt" "$dir/db-pairs.txt" | cut -f 1 > "$dir/files-missing.txt"
-    if [ -s "$dir/files-extra.txt" ]; then
-      warn "$name: $srv/$repo.files names $(awk 'END { print NR + 0 }' "$dir/files-extra.txt") package file(s) that $repo.db does not, e.g. $(awk -F '\t' 'NR == 1 { print $1 " sha256 " $2 }' "$dir/files-extra.txt")"
+    if [ -s "$dir/files-conflict.txt" ]; then
+      warn "$name: $srv/$repo.files and $repo.db name $(awk 'END { print NR + 0 }' "$dir/files-conflict.txt") file(s) with other sha256 values, e.g. $(awk -F '\t' 'NR == 1 { print $1 " sha256 " $2 }' "$dir/files-conflict.txt")"
       continue
+    fi
+    drift_max="${FILES_DRIFT_MAX:-$(awk -F '\t' 'END { n = int(NR / 100); print (n > 16) ? n : 16 }' "$dir/records.tsv")}"
+    drift="$(cat "$dir/files-extra.txt" "$dir/files-missing.txt" | awk 'END { print NR + 0 }')"
+    if [ "$drift" -gt "$drift_max" ]; then
+      warn "$name: $srv/$repo.files differs from $repo.db by $drift package file(s), over FILES_DRIFT_MAX=$drift_max"
+      continue
+    fi
+    if [ -s "$dir/files-extra.txt" ]; then
+      warn "$name: $srv/$repo.files names $(awk 'END { print NR + 0 }' "$dir/files-extra.txt") package file(s) that $repo.db does not, as upstream serves it: $(tr '\n' ' ' < "$dir/files-extra.txt")"
     fi
     if [ -s "$dir/files-missing.txt" ]; then
       warn "$name: $srv/$repo.files leaves out $(awk 'END { print NR + 0 }' "$dir/files-missing.txt") package(s) of $repo.db, as upstream serves it: $(tr '\n' ' ' < "$dir/files-missing.txt")"

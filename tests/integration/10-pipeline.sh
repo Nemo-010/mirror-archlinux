@@ -531,7 +531,9 @@ check "the snapshot is verified and promoted, and names no file with no signatur
 # 1g. A files database that leaves out a package of the database is upstream's
 #     own defect: planned, the package named, and verify runs pacman -Fl only
 #     over the names the files database holds. One that names a package the
-#     database does not is refused. Each in a namespace of its own.
+#     database does not is planned too, and the package named. One that names
+#     a file of the database with other bytes is refused. Each in a namespace
+#     of its own.
 #---------------------------------------------------------------------------#
 build port-files-missing aarch64/port-fmiss port
 mkdir -p "$work/targets-fmiss"
@@ -560,15 +562,30 @@ mkdir -p "$work/targets-fextra"
 sed 's|/\$arch/\$repo$|/$arch/port-fextra|; s|/\$arch/\./\$repo$|/$arch/./port-fextra|' "$work/targets/aarch64-port.conf" > "$work/targets-fextra/aarch64-port.conf"
 rc=0
 TARGETS_DIR="$work/targets-fextra" MIRROR_NAMESPACE=it/fextra "$REPO_ROOT/scripts/plan" "$work/out/fextra" > "$work/out/fextra.log" 2>&1 || rc=$?
-case "$(cat "$work/out/fextra/aarch64-port/state" 2> /dev/null):$(cat "$work/out/fextra/aarch64-port/why" 2> /dev/null)" in
-  "error:no db_server that served port.db "*" also served a port.files that matches it"*) ok "a files database that names a package the database does not is refused" ;;
-  *) fail "a files database that names a package the database does not is refused" "plan exit $rc: $(cat "$work/out/fextra/aarch64-port/why" 2> /dev/null)" \
-    "read out/fextra.log" ;;
-esac
-if grep -q 'port.files names 1 package file(s) that port.db does not, e.g. stray-1-1-any.pkg.tar.zst' "$work/out/fextra.log"; then
-  ok "the refusal names the package"
+check "a files database that names a package the database does not is planned" pending \
+  "$(cat "$work/out/fextra/aarch64-port/state" 2> /dev/null)" "plan exit $rc; read out/fextra.log"
+if grep -q 'port.files names 1 package file(s) that port.db does not, as upstream serves it: stray-1-1-any.pkg.tar.zst' "$work/out/fextra.log"; then
+  ok "the plan names the package only the files database names"
 else
-  fail "the refusal names the package" "read out/fextra.log"
+  fail "the plan names the package only the files database names" "read out/fextra.log"
+fi
+
+# The same file name with other bytes: the files database of another snapshot.
+build port-files-conflict aarch64/port-fconflict port
+mkdir -p "$work/targets-fconflict"
+# shellcheck disable=SC2016 # $arch and $repo are the target file's, not the shell's
+sed 's|/\$arch/\$repo$|/$arch/port-fconflict|; s|/\$arch/\./\$repo$|/$arch/./port-fconflict|' "$work/targets/aarch64-port.conf" > "$work/targets-fconflict/aarch64-port.conf"
+rc=0
+TARGETS_DIR="$work/targets-fconflict" MIRROR_NAMESPACE=it/fconflict "$REPO_ROOT/scripts/plan" "$work/out/fconflict" > "$work/out/fconflict.log" 2>&1 || rc=$?
+case "$(cat "$work/out/fconflict/aarch64-port/state" 2> /dev/null):$(cat "$work/out/fconflict/aarch64-port/why" 2> /dev/null)" in
+  "error:no db_server that served port.db "*" also served a port.files that matches it"*) ok "a files database that names a file of the database with other bytes is refused" ;;
+  *) fail "a files database that names a file of the database with other bytes is refused" "plan exit $rc: $(cat "$work/out/fconflict/aarch64-port/why" 2> /dev/null)" \
+    "read out/fconflict.log" ;;
+esac
+if grep -q 'port.files and port.db name 1 file(s) with other sha256 values, e.g. unsigned-1-1-any.pkg.tar.zst' "$work/out/fconflict.log"; then
+  ok "the refusal names the file"
+else
+  fail "the refusal names the file" "read out/fconflict.log"
 fi
 
 #---------------------------------------------------------------------------#
