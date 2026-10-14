@@ -121,6 +121,8 @@ plan ──> mirror (shards) ──> stage ──> verify (batches) ──> prom
 4. **verify** runs pacman in the target's own Arch image, with the wrapper as its
    `XferCommand` and the staged digest as its only Server, and downloads every
    new file: pacman checks every sha256 and signature as a consumer would.
+   Each `.sig` pacman stored must also be the database's `%PGPSIG%`, which
+   pacman itself checks against without reading the stored one.
 5. **promote** tags the staged digest: the day's tag (once), the content tags,
    then `latest`, never backwards, and reads it back through the wrapper.
 6. **report** writes the run's summary, and keeps one issue per problem that

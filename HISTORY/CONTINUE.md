@@ -22,10 +22,14 @@ things stand, and what is left.
 - Every test has been seen to fail: `HISTORY/tests-seen-to-fail.md`.
 - Docs: no em dashes, no marketing adjectives, and only the markers ⛔ ⭐ ⚠.
 
-## Where things stand (2026-10-13)
+## Where things stand (2026-10-14)
 
 - x86_64 core is mirrored to `ghcr.io/pkgforge-dev/mirror-archlinux/x86_64/core`
   every three hours, verified by pacman through the wrapper before promotion.
+  The first promotion from `main` was run 38490975315 on 2026-10-14: `latest`
+  and `2026.10.14` name the same snapshot, and a stock Arch pacman with it as
+  core's only Server ran `-Sy` in 4.0 s and `-S nano` in 5.1 s from a
+  residential network.
   The package is public: the organisation creates packages public.
 - Tests: the static suite (shellcheck, actionlint, seven policy files), the unit
   suite under bash and gawk, dash and mawk, and busybox, and the integration
@@ -36,7 +40,6 @@ things stand, and what is left.
   (`HISTORY/design.md`, both review sections); every confirmed finding is fixed
   and tested.
 - docker-archlinux is unchanged. Nothing reads the mirror yet but its own tests.
-- An issue on this repository records the ArchPOWER route for phase 2.
 
 ## Maintainer actions
 
@@ -58,9 +61,7 @@ Left to the maintainer:
 
 ## Phase 2, in order
 
-1. **ppc.** The route is in the repository's issues: ask ArchPOWER's maintainer,
-   who offered on kth5/archpower#160, to let this repository's User-Agent
-   through. Then add `powerpc64le-base`, `powerpc64le-base-any` and the powerpc
+1. **ppc.** Add `powerpc64le-base`, `powerpc64le-base-any` and the powerpc
    and powerpc64 equivalents with `db_signed = yes` (below), and a verify
    platform for them (binfmt and QEMU on the runner, which the ubuntu image
    lacks).

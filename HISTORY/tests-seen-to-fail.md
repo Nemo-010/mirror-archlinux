@@ -54,11 +54,12 @@ carries `%PGPSIG%` (299 of 299, measured 2026-10-14). The fixture now passes
 `--include-sigs`, and the suite asserts that its database carries a `%PGPSIG%`
 for every package before it relies on it.
 
-⚠ With the decode broken, verify still passed: pacman checks the database's
-`%PGPSIG%` and never asks for the `.sig` of such a package, so verify does not
-read its signature layer. That layer is checked by mirror-file's read-back
-against the decoded `%PGPSIG%`, and by the integration suite, and by nothing
-that runs after promotion.
+It found a second gap. With the decode broken, verify still passed: pacman 7.1
+checks a package against the database's `%PGPSIG%`, yet still asks the wrapper
+for its `.sig` and stores it in the cache unread (measured against the
+promoted core, 2026-10-14), where a later `pacman -U` from the cache reads it.
+Verify now compares every stored `.sig` with the decoded `%PGPSIG%`, and the
+decode fault is refused there, before promotion.
 
 ## Policy
 

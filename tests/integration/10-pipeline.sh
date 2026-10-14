@@ -182,6 +182,9 @@ else
   fail "first sync: the database is promoted" "no promoted.tsv"
   logs_of 1
 fi
+check "verify compares each .sig pacman stored with its %PGPSIG%" 3 \
+  "$(sed -n 's/^\([0-9][0-9]*\) signature(s) compared$/\1/p' "$work/out/1/verify/verify-x86_64-test-0.log")" \
+  "read out/1/verify/verify-x86_64-test-0.log"
 
 for f in 'alpha-1:1.0+r2-1-any.pkg.tar.zst' 'beta_pc-2.0-1-x86_64.pkg.tar.zst' 'gamma-3.0-1-any.pkg.tar.zst'; do
   tag="$("$REPO_ROOT/client/pacman-oci" --tag "$f")"

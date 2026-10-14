@@ -17,6 +17,11 @@
 # own trust model, before it reports a download complete. A failure here is a
 # failure a consumer would have had.
 #
+# Then one check pacman does not make: with a %PGPSIG% in the database, pacman
+# verifies against it and stores the .sig the wrapper served without reading
+# it (measured with pacman 7.1, 2026-10-14). Each stored .sig must be that
+# %PGPSIG%, decoded, byte for byte, or a later pacman -U from the cache fails.
+#
 # pacman reads a configuration written here, not the image's: one repository,
 # its staged manifest as the only Server, and DownloadUser = alpm, so the
 # wrapper runs as that user from a download-XXXXXX directory, the stock Arch
@@ -150,6 +155,38 @@ if [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
+# pacman checks a package against the database's %PGPSIG% when it carries one,
+# and keeps the .sig the wrapper served beside it in the cache unread; a later
+# pacman -U from that cache reads it. So each must be that %PGPSIG%, decoded.
+echo "== signature layers against the database's %PGPSIG%"
+bsdtar -xOf "/var/lib/pacman/sync/$repo.db" | awk '
+  k == "F" { f = $0 }
+  k == "P" { print f "\t" $0 }
+  { k = ($0 == "%FILENAME%") ? "F" : ($0 == "%PGPSIG%") ? "P" : "" }
+' > /tmp/pgpsig.tsv
+cache=/var/cache/pacman/pkg
+checked=0
+bad=0
+while IFS=$'\t' read -r f sig; do
+  [ -e "$cache/$f" ] || continue
+  checked=$((checked + 1))
+  if [ ! -f "$cache/$f.sig" ]; then
+    echo "CULPRIT $f: the database carries a %PGPSIG%, and the wrapper served no .sig"
+    bad=1
+    continue
+  fi
+  want="$(printf '%s' "$sig" | base64 -d | sha256sum | cut -d ' ' -f 1)"
+  got="$(sha256sum < "$cache/$f.sig" | cut -d ' ' -f 1)"
+  if [ "$want" != "$got" ]; then
+    echo "CULPRIT $f: its .sig is sha256 $got, its %PGPSIG% decodes to sha256 $want"
+    bad=1
+  fi
+done < /tmp/pgpsig.tsv
+echo "$checked signature(s) compared"
+if [ "$bad" -ne 0 ]; then
+  exit 1
+fi
+
 if [ "$files_db" = 1 ]; then
   echo "== files database"
   pac -Fy
@@ -185,5 +222,5 @@ if [ "$rc" -eq 0 ]; then
 fi
 culprits="$(sed -n 's/^CULPRIT //p' "$log_file" | tr '\n' ' ')"
 tail -n 40 "$log_file" >&2
-verdict failed "pacman refused the batch (status $rc)${culprits:+; at fault: $culprits}"
+verdict failed "the batch failed its checks (status $rc)${culprits:+; at fault: $culprits}"
 exit 1

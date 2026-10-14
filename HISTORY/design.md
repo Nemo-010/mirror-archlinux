@@ -51,6 +51,7 @@ public packages cost nothing to store.
 | pacman, a package's `.sig` | asked only of the server that served the package; when the signature is required, a failed `.sig` ends the transaction |
 | pacman, with `DownloadUser` | the `XferCommand` runs as that user (uid switch and NO_NEW_PRIVS only), from `<syncdir or cachedir>/download-XXXXXX/` |
 | pacman, signatures | checked against the database's `%PGPSIG%` when present, else the detached `.sig`; `-Sw` checks both sha256 and signatures |
+| pacman 7.1, a package with `%PGPSIG%` | still asks the `XferCommand` for its `.sig` and stores it in the cache, unread (2026-10-14) |
 | `%PGPSIG%` coverage | Arch x86_64 core and extra 100%; aarch64, armv7h 100%; loong64 core 263/295; riscv64 core 9/294; ArchPOWER base-powerpc64le 0/3735, base-any 262/2200 |
 | `%PGPSIG%` against `.sig` | base64 decoded, byte identical (zlib) |
 | filenames | about 44000 across nine databases, all `[A-Za-z0-9@._+:-]`, longest 92; `:` in 761, `+` in 246; a few dozen with upper case |
@@ -131,6 +132,11 @@ own checks through the wrapper.
   is the database's `%PGPSIG%`, decoded; with no `%PGPSIG%` the detached `.sig`
   is downloaded, and a file is pushed unsigned only when every server answers
   404 for it, as upstream ships it.
+- **The `.sig` a consumer stores is the one pacman would check.** pacman checks
+  against `%PGPSIG%` and stores the served `.sig` unread, so verify compares
+  every stored `.sig` with the decoded `%PGPSIG%`; a mismatch fails the batch
+  and names the file. Without it, a wrong layer would pass verify and break a
+  later `pacman -U` from the cache.
 - **Every field read from a database is checked first.** A filename with `/`, a
   space, a leading `-` or `.`, a control character or a byte above 0x7e is
   refused with the whole database. Names makepkg allows that the tag mapping
@@ -217,6 +223,7 @@ read can be ingested from another host.
 | consumer, residential network | stock Arch config, `DownloadUser = alpm`, the mirror as core's only Server: `pacman -Sy` 6.0 s (2 s of it pacman's pause after the absent `core.db.sig`), `pacman -S nano` 4.3 s |
 | the token path | `PACMAN_OCI_NO_DUMMY=1` against GHCR: 401, anonymous token, 200 |
 | debloat on a runner | 12 of 12 directories removed in 45 s, 85 GiB free to 120 GiB |
+| first promotion, from `main` (2026-10-14) | run 38490975315: `latest`, `2026.10.14`, `db-` and `files-` name one snapshot of 299 packages; a consumer's synced `core.db` hashes to its `db-` tag; `-Sy` 4.0 s, `-S nano` 5.1 s |
 
 ## The code review
 
@@ -234,7 +241,9 @@ move `latest` back (the rule above).
 Running every fault again afterwards found one gap the reviewers had not: no
 fixture database carried `%PGPSIG%`, because pacman 7's `repo-add` embeds
 signatures only with `--include-sigs`, so the suite never drove the path every
-real core package takes. The fixture embeds them now, and the suite asserts it
+real core package takes. The fixture embeds them now, and the suite asserts it.
+Driving that path then showed verify passing a wrong signature layer, which
+pacman stores without reading; verify now compares it
 (`HISTORY/tests-seen-to-fail.md`, "What the faults found").
 
 ## The design review
@@ -252,9 +261,6 @@ source instead).
 - Whether GHCR read-after-push stays consistent at seed scale: 299 of 299 read
   back on the first try for core; count read-back retries in the mirror
   results for extra.
-- Whether verify should also read each signature layer back and compare it
-  with the decoded `%PGPSIG%`: pacman does not read it for such a package, so
-  after mirror-file's read-back nothing does. About one request a package.
 - GHCR request volume at seed scale (about 15k manifest reads and pushes for
   x86_64 extra), 429s, token requests.
 - Wrapper latency per package against pacman's own downloader.
