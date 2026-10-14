@@ -1,9 +1,11 @@
 # Measure the outcome, not the runs: has each target's latest stopped
-# following upstream? And have the schedules stopped firing?
+# following upstream? Have the schedules stopped firing?
 #
 # ⭐ sync.yml's keepalive job runs the same schedule checks, so each workflow
 # witnesses the other. A schedule that stops firing leaves no run behind to
 # fail; this is the run that notices.
+#
+# Once a day. The hourly Worker check is a job of status.yml.
 name: Watchdog
 
 on:
@@ -24,7 +26,7 @@ defaults:
 jobs:
   staleness:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       issues: write
@@ -32,6 +34,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history: a target added less than the tolerance ago,
+          # with nothing promoted yet, is new, not stale.
+          fetch-depth: 0
       - name: Check every target follows upstream
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,3 +81,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/check-schedules-fired
+      # Each scheduled workflow starts the others when theirs did not fire.
+      # always(): a check above that fails must not stop the restart.
+      - name: Start an overdue sync or status run
+        if: ${{ always() && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rc=0
+          scripts/dispatch-overdue sync.yml 240 || rc=$?
+          scripts/dispatch-overdue status.yml 120 || rc=$?
+          exit "$rc"

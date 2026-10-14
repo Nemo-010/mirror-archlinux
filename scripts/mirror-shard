@@ -13,13 +13,28 @@
 # counted as failed, so an item that died without writing one, or one xargs
 # never started because it gave up early, is not silently missing.
 #
+# Each item writes its result to OUT/lines/LINE.tsv the moment it ends. A shard
+# killed before results.tsv is written (the job ran out of time) still leaves
+# those, and scripts/stage reads them: what was pushed counts.
+#
+# Every mirror-file of the shard shares one pull token, kept in a file in the
+# work directory (lib.sh REGISTRY_TOKEN_CACHE), and one record of the servers
+# that failed (lib.sh down_mark): a server that fails for one file is asked
+# last for every file after it.
+#
+# OUT/plan-id is the id of the plan the shard comes from, read from
+# SHARD.tsv's plan directory (scripts/plan writes PLAN/<target>/plan-id and
+# PLAN/<target>/shards/<n>.tsv). It is written first, so even a shard that is
+# killed leaves it. scripts/stage reads no result of another plan.
+#
 # The work goes in the directory with the most free space among $RUNNER_TEMP,
 # /mnt and /tmp, counting each filesystem once. scripts/debloat-runner runs
 # only when the PARALLEL largest files of the shard would not fit; if they
 # still do not fit after it, PARALLEL comes down until they do.
 #
 # Environment: PARALLEL (default 4), SHARD_INDEX, DEBLOAT (auto, always or
-# never; default auto), MIRROR_NAMESPACE, REGISTRY_USER, REGISTRY_TOKEN.
+# never; default auto), MIRROR_NAMESPACE, REGISTRY_USER, REGISTRY_TOKEN,
+# ORAS_CACHE (scripts/install-oras).
 #
 # Exit status: 0 every file is on the registry, 1 otherwise.
 set -euo pipefail
@@ -48,6 +63,14 @@ case "$DEBLOAT" in
   *) die "DEBLOAT must be auto, always or never, not '$DEBLOAT'" ;;
 esac
 mkdir -p "$out"
+plan_id_file="$(dirname "$(dirname "$shard")")/plan-id"
+plan_id=""
+if [ -f "$plan_id_file" ]; then
+  plan_id="$(cat "$plan_id_file")"
+else
+  warn "$plan_id_file does not exist, so these results name no plan, and scripts/stage reads them only with a plan that names none"
+fi
+printf '%s\n' "$plan_id" > "$out/plan-id"
 
 lines="$(awk 'END { print NR + 0 }' "$shard")"
 [ "$lines" -gt 0 ] || die "$shard has no work line"
@@ -102,8 +125,11 @@ fi
 log "$lines file(s), $PARALLEL at a time, in $best_dir ($((best_free / 1073741824)) GiB free)"
 
 WORK="$(mktemp -d "$best_dir/mirror.XXXXXX")"
-RESULTS="$WORK/results"
+RESULTS="$out/lines"
+rm -rf "$RESULTS"
 mkdir -p "$RESULTS" "$WORK/items" "$WORK/bin"
+REGISTRY_TOKEN_CACHE="$WORK/tokens"
+mkdir -m 0700 "$REGISTRY_TOKEN_CACHE"
 cleanup() {
   rm -rf "$WORK"
 }
@@ -116,7 +142,7 @@ trap cleanup EXIT
 ORAS="$("$REPO_ROOT/scripts/install-oras" "$WORK/bin")"
 ORAS_CONFIG="$WORK/oras-auth.json"
 oras_login "$ORAS" "$ORAS_CONFIG"
-export RESULTS WORK ORAS ORAS_CONFIG SHARD_INDEX MIRROR_NAMESPACE
+export RESULTS WORK ORAS ORAS_CONFIG SHARD_INDEX MIRROR_NAMESPACE REGISTRY_TOKEN_CACHE
 
 rc=0
 seq 1 "$lines" | xargs -d '\n' -n 1 -P "$PARALLEL" "$REPO_ROOT/scripts/mirror-file" "$shard" || rc=$?
