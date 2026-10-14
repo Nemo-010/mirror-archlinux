@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+#
+# Free disk on a GitHub-hosted Ubuntu runner by deleting toolchains this
+# repository never uses, in parallel, and say how much it freed.
+#
+#   scripts/debloat-runner [--need BYTES] [--dir DIR]
+#
+# With --need, nothing is removed when DIR (default $RUNNER_TEMP) already has
+# BYTES free, so a run that has room spends no time here. Without it the
+# removal always runs, which is how ci.yml keeps this exercised.
+#
+# ⚠ Measured 2026-10-13 from the documented runner image: public-repository
+# ubuntu-24.04 runners start with about 87 GB free on /, and GitHub guarantees
+# only 14 GB. The mirror deletes each file once it is pushed, so most runs need
+# far less than either, and this exists for the day the guarantee is what we get.
+#
+# ⛔ Written fresh rather than ported from pkgforge/devscripts debloat_ubuntu.sh:
+# that script is built on || true, 2>/dev/null and ((count++)), each of which
+# either hides a failure or ends a set -e script. Snap, apt and LVM are left
+# alone here; they take minutes and the space they free is small.
+#
+# Exit status: 0 done (a directory that could not be removed is a warning, not
+# a failure: the job may still have the room it needs), 1 usage or not a runner.
+set -euo pipefail
+
+die() {
+  echo "debloat-runner: $1" >&2
+  exit 1
+}
+
+need_bytes=""
+dir="${RUNNER_TEMP:-/tmp}"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --need)
+      need_bytes="${2:-}"
+      shift 2
+      ;;
+    --dir)
+      dir="${2:-}"
+      shift 2
+      ;;
+    *) die "usage: scripts/debloat-runner [--need BYTES] [--dir DIR]" ;;
+  esac
+done
+if [ -n "$need_bytes" ]; then
+  case "$need_bytes" in
+    *[!0-9]*) die "--need takes a number of bytes, not '$need_bytes'" ;;
+  esac
+fi
+[ -d "$dir" ] || die "no directory $dir"
+
+free_bytes() {
+  df --output=avail -B1 "$1" | awk 'NR == 2 { print $1 }'
+}
+
+before="$(free_bytes "$dir")"
+if [ -n "$need_bytes" ] && [ "$before" -ge "$need_bytes" ]; then
+  printf 'debloat-runner: %s has %d GiB free, %d GiB needed, nothing removed\n' \
+    "$dir" "$((before / 1073741824))" "$((need_bytes / 1073741824))"
+  exit 0
+fi
+
+if [ "${RUNNER_ENVIRONMENT:-}" != github-hosted ] || [ "$(uname -s)" != Linux ]; then
+  die "this deletes system directories and runs only on a GitHub-hosted Linux runner (RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-unset})"
+fi
+
+# The largest directories on the ubuntu-24.04 image that no step here uses.
+# A path that is absent on a given image version is simply skipped.
+TARGETS=(
+  /usr/local/lib/android
+  /opt/hostedtoolcache
+  /usr/share/dotnet
+  /opt/ghc
+  /usr/local/.ghcup
+  /usr/share/swift
+  /usr/lib/jvm
+  /usr/local/share/powershell
+  /usr/local/share/chromium
+  /opt/microsoft
+  /opt/google
+  /usr/local/julia*
+  /opt/az
+)
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+pids=()
+names=()
+for t in "${TARGETS[@]}"; do
+  # shellcheck disable=SC2086 # unquoted so a glob such as julia* expands
+  for p in $t; do
+    [ -e "$p" ] || continue
+    # shellcheck disable=SC2024 # the log is the caller's file; only rm needs root
+    sudo rm -rf --one-file-system -- "$p" > "$work/$(printf '%s' "$p" | tr '/' '_').log" 2>&1 &
+    pids+=("$!")
+    names+=("$p")
+  done
+done
+
+removed=0
+failed=0
+for i in "${!pids[@]}"; do
+  rc=0
+  wait "${pids[$i]}" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    removed=$((removed + 1))
+  else
+    failed=$((failed + 1))
+    echo "::warning::debloat-runner: could not remove ${names[$i]} (rm $rc)"
+    sed -n 1,5p "$work/$(printf '%s' "${names[$i]}" | tr '/' '_').log" >&2
+  fi
+done
+
+after="$(free_bytes "$dir")"
+printf 'debloat-runner: removed %d of %d directories, %s free %d GiB -> %d GiB (+%d GiB)\n' \
+  "$removed" "$((removed + failed))" "$dir" "$((before / 1073741824))" "$((after / 1073741824))" \
+  "$(((after - before) / 1073741824))"
+if [ -n "$need_bytes" ] && [ "$after" -lt "$need_bytes" ]; then
+  echo "::warning::debloat-runner: $dir still has only $((after / 1073741824)) GiB free, $((need_bytes / 1073741824)) GiB needed"
+fi

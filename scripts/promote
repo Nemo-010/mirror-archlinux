@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+#
+# Promote one verified, staged database: tag it, point latest at it last, and
+# read it back the way a consumer does.
+#
+#   scripts/promote STAGE VERIFY TARGET
+#
+# STAGE is scripts/stage's output, VERIFY holds every verify-*.tsv of the run.
+#
+# Tags, all written to the staged digest, never to the moving staging tag, in
+# this order:
+#   YYYY.MM.DD   the UTC date the database was fetched; written only when the
+#                tag does not exist, so it is the day's first snapshot and never
+#                moves after
+#   db-HEX       HEX is the sha256 of <repo>.db: the snapshot by its content,
+#                which the wrapper uses to pair a database signature with the
+#                very database pacman holds
+#   files-HEX    the same for <repo>.files
+#   latest       last, once everything it points at is in place
+#
+# ⛔ Every batch of the target must have passed, for this very staged digest; a
+# batch with no verdict, or a verdict about another digest, counts as failed. ⛔ latest never moves backwards: immediately before tagging, the
+# fetched time of the snapshot latest names now is read back, and a staged
+# snapshot fetched earlier is refused. A run re-run days later, or a second
+# writer, cannot roll consumers back. (scripts/plan holds the content floor:
+# no package older than the promoted database.)
+#
+# Environment: MIRROR_NAMESPACE, REGISTRY_USER, REGISTRY_TOKEN.
+#
+# Exit status: 0 promoted, or nothing to promote; 1 refused or failed.
+set -euo pipefail
+SCRIPT_NAME=promote
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+need curl jq awk sha256sum timeout
+
+stage="${1:-}"
+verify="${2:-}"
+target="${3:-}"
+if [ ! -d "$stage" ] || [ -z "$verify" ] || [ -z "$target" ]; then
+  die "usage: scripts/promote STAGE VERIFY TARGET"
+fi
+[ -n "$MIRROR_NAMESPACE" ] || die "MIRROR_NAMESPACE is not set"
+if [ "$MIRROR_REGISTRY_AUTH" != none ] && [ -z "${REGISTRY_TOKEN:-}" ]; then
+  die "REGISTRY_TOKEN is not set; promoting writes tags"
+fi
+
+dir="$stage/$target"
+[ -f "$dir/state" ] || die "no stage result for $target"
+if [ "$(cat "$dir/state")" != staged ]; then
+  log "$target is $(cat "$dir/state"), nothing to promote"
+  exit 0
+fi
+# shellcheck source=/dev/null # written by scripts/stage
+. "$dir/staged.env"
+: "${DIGEST:?}" "${DB_SHA256:?}" "${FILES_SHA256:?}" "${FETCHED:?}"
+[[ "$FETCHED" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
+  die "the staged fetched time '$FETCHED' is not ISO 8601 UTC"
+
+conf="$TARGETS_DIR/$target.conf"
+target_check "$conf"
+repo="$(target_get "$conf" repo)"
+repo_path="$(target_repository "$conf")"
+
+#---------------------------------------------------------------------------#
+# Every batch passed
+#---------------------------------------------------------------------------#
+batches=0
+passed=0
+for b in "$dir"/batches/*.txt; do
+  [ -e "$b" ] || continue
+  batches=$((batches + 1))
+  n="$(basename "$b" .txt)"
+  v="$(find "$verify" -name "verify-$target-$n.tsv" -type f | sed -n 1p)"
+  if [ -n "$v" ] && [ "$(cut -f 3 "$v")" = passed ] && [ "$(cut -f 5 "$v")" = "$DIGEST" ]; then
+    passed=$((passed + 1))
+  else
+    log "batch $n: ${v:+$(cut -f 3,4,5 "$v")}${v:-no verdict} (staged $DIGEST)"
+  fi
+done
+[ "$batches" -gt 0 ] || die "$target was staged with no verification batch"
+[ "$passed" -eq "$batches" ] || die "$passed of $batches verification batch(es) of $target passed; nothing is promoted"
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+mkdir -p "$work/bin"
+
+#---------------------------------------------------------------------------#
+# latest never moves backwards
+#---------------------------------------------------------------------------#
+rc=0
+registry_manifest "$repo_path" latest "$work/latest.json" || rc=$?
+case "$rc" in
+  "$REG_STATUS_OK")
+    live_fetched="$(jq -r '.annotations["dev.pkgforge.mirror.fetched"] // empty' "$work/latest.json")"
+    if [ -n "$live_fetched" ] && ! fetched_not_older "$FETCHED" "$live_fetched"; then
+      die "the staged snapshot was fetched $FETCHED, before the one latest names ($live_fetched)" \
+        "latest stays where it is: a re-run or a second writer must not roll consumers back" \
+        "reproduce: curl -s -H 'Authorization: Bearer QQ==' -H 'Accept: application/vnd.oci.image.manifest.v1+json' https://$MIRROR_REGISTRY/v2/$repo_path/manifests/latest | jq .annotations"
+    fi
+    ;;
+  "$REG_STATUS_ABSENT") log "$repo_path has no latest yet; this is its first promotion" ;;
+  *) die "could not read $repo_path:latest, and promoting over an unread latest could move it backwards" ;;
+esac
+
+#---------------------------------------------------------------------------#
+# Tag by digest: the day's tag first, latest last
+#---------------------------------------------------------------------------#
+ORAS="$("$REPO_ROOT/scripts/install-oras" "$work/bin")"
+ORAS_CONFIG="$work/oras-auth.json"
+oras_login "$ORAS" "$ORAS_CONFIG"
+
+mapfile -t oargs < <(oras_args)
+day="${FETCHED:0:4}.${FETCHED:5:2}.${FETCHED:8:2}"
+tags=()
+rc=0
+registry_manifest "$repo_path" "$day" "$work/day.json" || rc=$?
+case "$rc" in
+  "$REG_STATUS_ABSENT") tags+=("$day") ;;
+  "$REG_STATUS_OK") log "$day already names the day's first snapshot and keeps it" ;;
+  *) die "could not read $repo_path:$day" ;;
+esac
+tags+=("db-$DB_SHA256" "files-$FILES_SHA256" latest)
+
+for t in "${tags[@]}"; do
+  ok=0
+  for attempt in 1 2 3; do
+    rc=0
+    timeout --kill-after=30 120 "$ORAS" tag "${oargs[@]}" \
+      "$MIRROR_REGISTRY/$repo_path@$DIGEST" "$t" > "$work/tag.log" 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then
+      ok=1
+      break
+    fi
+    warn "oras tag $t, attempt $attempt, ended $rc" "$(tail -n 3 "$work/tag.log")"
+    sleep $((attempt * attempt * 5))
+  done
+  [ "$ok" -eq 1 ] || die "could not tag $repo_path@$DIGEST as $t: $(tail -n 1 "$work/tag.log")"
+done
+
+#---------------------------------------------------------------------------#
+# Read back, anonymously, through the wrapper a consumer runs
+#---------------------------------------------------------------------------#
+got=""
+for attempt in 1 2 3 4 5; do
+  rm -f "$work/$repo.db.part"
+  rc=0
+  REGISTRY_TOKEN='' "$WRAPPER" "$work/$repo.db.part" "$OCI_SCHEME://$MIRROR_REGISTRY/$repo_path/$repo.db" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    got="$(sha256sum "$work/$repo.db.part" | cut -d ' ' -f 1)"
+    [ "$got" != "$DB_SHA256" ] || break
+  fi
+  sleep $((attempt * 3))
+done
+[ "$got" = "$DB_SHA256" ] || die "promoted, but $OCI_SCHEME://$MIRROR_REGISTRY/$repo_path/$repo.db reads back as '${got:-nothing}', not $DB_SHA256" \
+  "reproduce: client/pacman-oci /tmp/$repo.db.part $OCI_SCHEME://$MIRROR_REGISTRY/$repo_path/$repo.db"
+
+printf 'promoted\t%s\t%s\t%s\n' "$target" "$DIGEST" "${tags[*]}" > "$dir/promoted.tsv"
+log "$repo_path@$DIGEST is ${tags[*]}"

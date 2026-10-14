@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+#
+# Build the integration suite's upstream: a small signed pacman repository.
+# Runs inside an Arch container, as the calling user, with the upstream root
+# mounted at /out.
+#
+#   bash build-repo STATE [DIR]
+#
+# Writes /out/x86_64/DIR (default test). STATE names the contents:
+#   one        alpha (an epoch and a +), beta_pc (_ before p and c), gamma 3.0-1
+#   two        as one, with gamma 3.0-2 built later
+#   replaced   as two, with beta_pc rebuilt under the same filename
+#   three      as two, with delta 1-1 added
+#   ahead-alpha  as two, with alpha rebuilt later
+#   ahead-gamma  as two, with gamma 3.0-3 built later: each of the two
+#                ahead-states is behind the other, and neither is behind two
+#   untrusted  as two, with epsilon signed by a key no one trusts
+#   nopgpsig   as two, with zeta added, and a database that carries no
+#              %PGPSIG%: the detached .sig files are the only signatures, as on
+#              most of ArchPOWER and archriscv
+#
+# Every other state's database carries %PGPSIG% for every package, as Arch's
+# own core and extra do. pacman 7's repo-add embeds a signature only when given
+# --include-sigs; without it the suite would never take the %PGPSIG% path that
+# every real core package takes.
+#
+# Package bytes are fixed by their inputs, so a state built twice gives the
+# same package files; that is what lets the suite go back to an earlier state
+# and see the mirror refuse it.
+set -euo pipefail
+
+state="${1:?usage: build-repo STATE [DIR]}"
+repo="/out/x86_64/${2:-test}"
+export GNUPGHOME=/out/gnupg
+
+if [ ! -d "$GNUPGHOME" ]; then
+  mkdir -p -m 0700 "$GNUPGHOME"
+  gpg --batch --passphrase '' --quick-gen-key 'mirror-archlinux test <test@example.invalid>' ed25519 sign never
+  gpg --armor --export > /out/test.asc
+fi
+if [ "$state" = untrusted ] && [ ! -d /out/gnupg-untrusted ]; then
+  mkdir -p -m 0700 /out/gnupg-untrusted
+  GNUPGHOME=/out/gnupg-untrusted gpg --batch --passphrase '' --quick-gen-key 'untrusted <nobody@example.invalid>' ed25519 sign never
+fi
+
+rm -rf "$repo"
+mkdir -p "$repo"
+
+# mkpkg NAME VERSION ARCH BUILDDATE CONTENT [GNUPGHOME]
+mkpkg() {
+  local name="$1" version="$2" arch="$3" built="$4" content="$5" home="${6:-$GNUPGHOME}" d file
+  d="$(mktemp -d)"
+  mkdir -p "$d/usr/share/mirror-test"
+  printf '%s\n' "$content" > "$d/usr/share/mirror-test/$name"
+  cat > "$d/.PKGINFO" << EOF
+pkgname = $name
+pkgbase = $name
+pkgver = $version
+pkgdesc = mirror-archlinux integration fixture
+url = https://example.invalid
+builddate = $built
+packager = mirror-archlinux test <test@example.invalid>
+size = 64
+arch = $arch
+license = MIT
+EOF
+  touch -d "@$built" "$d/.PKGINFO" "$d/usr/share/mirror-test/$name" "$d/usr/share/mirror-test" "$d/usr/share" "$d/usr"
+  file="$name-$version-$arch.pkg.tar.zst"
+  (cd "$d" && bsdtar --zstd --uid 0 --gid 0 --uname root --gname root -cf "$repo/$file" .PKGINFO usr)
+  GNUPGHOME="$home" gpg --batch --yes --detach-sign --no-armor -o "$repo/$file.sig" "$repo/$file"
+  rm -rf "$d"
+}
+
+case "$state" in
+  ahead-alpha) mkpkg alpha 1:1.0+r3-1 any 1700300000 "alpha rebuilt later" ;;
+  *) mkpkg alpha 1:1.0+r2-1 any 1700000000 "alpha one" ;;
+esac
+case "$state" in
+  replaced) mkpkg beta_pc 2.0-1 x86_64 1700000100 "beta rebuilt with the same name" ;;
+  *) mkpkg beta_pc 2.0-1 x86_64 1700000100 "beta one" ;;
+esac
+case "$state" in
+  one) mkpkg gamma 3.0-1 any 1700000200 "gamma one" ;;
+  ahead-gamma) mkpkg gamma 3.0-3 any 1700500000 "gamma three" ;;
+  *) mkpkg gamma 3.0-2 any 1700100200 "gamma two" ;;
+esac
+if [ "$state" = three ]; then
+  mkpkg delta 1-1 any 1700200000 "delta one"
+fi
+if [ "$state" = untrusted ]; then
+  mkpkg epsilon 1-1 any 1700400000 "epsilon, signed by a stranger" /out/gnupg-untrusted
+fi
+if [ "$state" = nopgpsig ]; then
+  mkpkg zeta 1-1 any 1700600000 "zeta, signed beside the database only"
+  # Without --include-sigs repo-add embeds none; the signatures are also hidden
+  # while it runs, so the database carries none whatever its default becomes.
+  mkdir -p "$repo/.sigs"
+  mv "$repo"/*.sig "$repo/.sigs/"
+  repo-add --quiet "$repo/test.db.tar.gz" "$repo"/*.pkg.tar.zst
+  mv "$repo"/.sigs/*.sig "$repo/"
+  rmdir "$repo/.sigs"
+  ls -l "$repo"
+  exit 0
+fi
+
+repo-add --quiet --include-sigs "$repo/test.db.tar.gz" "$repo"/*.pkg.tar.zst
+ls -l "$repo"

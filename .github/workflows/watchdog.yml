@@ -1,0 +1,78 @@
+# Measure the outcome, not the runs: has each target's latest stopped
+# following upstream? And have the schedules stopped firing?
+#
+# ⭐ sync.yml's keepalive job runs the same schedule checks, so each workflow
+# witnesses the other. A schedule that stops firing leaves no run behind to
+# fail; this is the run that notices.
+name: Watchdog
+
+on:
+  schedule:
+    - cron: '41 7 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  staleness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check every target follows upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIRROR_REGISTRY: ghcr.io
+        run: |
+          rc=0
+          scripts/check-staleness "$RUNNER_TEMP/staleness" || rc=$?
+          case "$rc" in
+            0 | 3) ;;
+            *) exit "$rc" ;;
+          esac
+          # One issue per target, raised while it is stale and closed when it
+          # is not; the body says what was measured and how to reproduce it.
+          for f in "$RUNNER_TEMP"/staleness/*.state; do
+            t="$(basename "$f" .state)"
+            case "$(cat "$f")" in
+              stale | unknown)
+                scripts/track-issue raise "stale-$t" "$t: the mirror has stopped following upstream" "$RUNNER_TEMP/staleness/$t.md"
+                ;;
+              *)
+                scripts/track-issue clear "stale-$t" "\`$t\` follows upstream again: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+                ;;
+            esac
+          done
+          exit "$rc"
+
+  schedules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Keep every schedule enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/keep-schedules-enabled
+      - name: Check every schedule fired
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/check-schedules-fired

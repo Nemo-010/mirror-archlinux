@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+#
+# Mirror every file of one shard, several at a time, and account for each one.
+#
+#   scripts/mirror-shard SHARD.tsv OUT
+#
+# OUT/results.tsv gets one line per work line of SHARD.tsv (scripts/mirror-file
+# describes it), and OUT/summary.txt a count by status.
+#
+# ⭐ Every work line ends with exactly one result. xargs is handed line numbers,
+# never the lines themselves, so a tab or a quote in a field cannot split or
+# change an argument; and after xargs returns, a line with no result file is
+# counted as failed, so an item that died without writing one, or one xargs
+# never started because it gave up early, is not silently missing.
+#
+# The work goes in the directory with the most free space among $RUNNER_TEMP,
+# /mnt and /tmp, counting each filesystem once. scripts/debloat-runner runs
+# only when the PARALLEL largest files of the shard would not fit; if they
+# still do not fit after it, PARALLEL comes down until they do.
+#
+# Environment: PARALLEL (default 4), SHARD_INDEX, DEBLOAT (auto, always or
+# never; default auto), MIRROR_NAMESPACE, REGISTRY_USER, REGISTRY_TOKEN.
+#
+# Exit status: 0 every file is on the registry, 1 otherwise.
+set -euo pipefail
+SCRIPT_NAME=mirror-shard
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+need curl jq awk sha256sum base64 xargs timeout
+
+shard="${1:-}"
+out="${2:-}"
+if [ ! -f "$shard" ] || [ -z "$out" ]; then
+  die "usage: scripts/mirror-shard SHARD.tsv OUT"
+fi
+[ -n "$MIRROR_NAMESPACE" ] || die "MIRROR_NAMESPACE is not set"
+if [ "$MIRROR_REGISTRY_AUTH" != none ] && [ -z "${REGISTRY_TOKEN:-}" ]; then
+  die "REGISTRY_TOKEN is not set; pushing needs one"
+fi
+PARALLEL="${PARALLEL:-4}"
+case "$PARALLEL" in
+  '' | *[!0-9]* | 0) die "PARALLEL must be a positive integer, not '$PARALLEL'" ;;
+esac
+DEBLOAT="${DEBLOAT:-auto}"
+case "$DEBLOAT" in
+  auto | always | never) ;;
+  *) die "DEBLOAT must be auto, always or never, not '$DEBLOAT'" ;;
+esac
+mkdir -p "$out"
+
+lines="$(awk 'END { print NR + 0 }' "$shard")"
+[ "$lines" -gt 0 ] || die "$shard has no work line"
+
+#---------------------------------------------------------------------------#
+# Where to work
+#---------------------------------------------------------------------------#
+free_of() {
+  df --output=avail -B1 "$1" | awk 'NR == 2 { print $1 }'
+}
+
+best_dir=""
+best_free=0
+seen_devices=" "
+for d in "${RUNNER_TEMP:-}" /mnt /tmp; do
+  [ -n "$d" ] && [ -d "$d" ] && [ -w "$d" ] || continue
+  dev="$(stat -c %d "$d")"
+  case "$seen_devices" in
+    *" $dev "*) continue ;;
+  esac
+  seen_devices="$seen_devices$dev "
+  f="$(free_of "$d")"
+  if [ "$f" -gt "$best_free" ]; then
+    best_dir="$d"
+    best_free="$f"
+  fi
+done
+[ -n "$best_dir" ] || die "no writable work directory among \$RUNNER_TEMP, /mnt and /tmp"
+
+# need_for P -> bytes the P largest files take at once, plus 1 GiB of room
+need_for() {
+  sort -t $'\t' -k5,5nr "$shard" | awk -F '\t' -v p="$1" 'NR <= p { s += $5 } END { printf "%.0f\n", s * 1.05 + 1073741824 }'
+}
+
+need="$(need_for "$PARALLEL")"
+case "$DEBLOAT" in
+  always) "$REPO_ROOT/scripts/debloat-runner" --dir "$best_dir" ;;
+  auto)
+    if [ "$best_free" -lt "$need" ]; then
+      "$REPO_ROOT/scripts/debloat-runner" --need "$need" --dir "$best_dir"
+    fi
+    ;;
+  never) ;;
+esac
+best_free="$(free_of "$best_dir")"
+while [ "$PARALLEL" -gt 1 ] && [ "$best_free" -lt "$(need_for "$PARALLEL")" ]; do
+  PARALLEL=$((PARALLEL - 1))
+done
+if [ "$best_free" -lt "$(need_for 1)" ]; then
+  die "$best_dir has $((best_free / 1048576)) MiB free, and the largest file of this shard needs $(($(need_for 1) / 1048576)) MiB"
+fi
+log "$lines file(s), $PARALLEL at a time, in $best_dir ($((best_free / 1073741824)) GiB free)"
+
+WORK="$(mktemp -d "$best_dir/mirror.XXXXXX")"
+RESULTS="$WORK/results"
+mkdir -p "$RESULTS" "$WORK/items" "$WORK/bin"
+cleanup() {
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
+
+#---------------------------------------------------------------------------#
+# oras, logged in through a configuration file of its own that dies with the
+# work directory, so the token never lands in ~/.docker.
+#---------------------------------------------------------------------------#
+ORAS="$("$REPO_ROOT/scripts/install-oras" "$WORK/bin")"
+ORAS_CONFIG="$WORK/oras-auth.json"
+oras_login "$ORAS" "$ORAS_CONFIG"
+export RESULTS WORK ORAS ORAS_CONFIG SHARD_INDEX MIRROR_NAMESPACE
+
+rc=0
+seq 1 "$lines" | xargs -d '\n' -n 1 -P "$PARALLEL" "$REPO_ROOT/scripts/mirror-file" "$shard" || rc=$?
+case "$rc" in
+  0 | 123) ;;
+  124 | 125) warn "xargs stopped early (status $rc); the items it never started are counted as failed below" ;;
+  *) warn "xargs ended with status $rc" ;;
+esac
+
+#---------------------------------------------------------------------------#
+# Reconcile: one result per work line.
+#---------------------------------------------------------------------------#
+bad_count="$(reconcile_results "$shard" "$RESULTS" "$out/results.tsv")"
+cp "$shard" "$out/work.tsv"
+awk -F '\t' '{ n[$3]++ } END { for (s in n) printf "%s %d\n", s, n[s] }' "$out/results.tsv" | sort > "$out/summary.txt"
+log "results: $(tr '\n' ' ' < "$out/summary.txt")"
+
+if [ "$bad_count" -gt 0 ]; then
+  awk -F '\t' '$3 != "pushed" && $3 != "present"' "$out/results.tsv" | sed -n 1,20p >&2
+  die "$bad_count of $lines file(s) are not on the registry"
+fi

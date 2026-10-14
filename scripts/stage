@@ -1,0 +1,288 @@
+#!/usr/bin/env bash
+#
+# Stage each pending target's database: check that every file it names is on
+# the registry, push the database under a staging tag, read it back, and split
+# the files new since the promoted database into verification batches.
+#
+#   scripts/stage PLAN RESULTS OUT
+#
+# PLAN is scripts/plan's output. RESULTS holds the mirror shards' outputs
+# (any depth; every results.tsv under it is read).
+#
+# OUT/<target>/state   staged held replaced private error, or the plan's own
+#                      state for a target that was not pending
+# OUT/<target>/why     what was measured
+# OUT/<target>/staged.env  DIGEST, DB_SHA256, FILES_SHA256, TAG of the staged manifest
+# OUT/<target>/batches/<n>.txt  package names, one per line
+# OUT/verify-matrix.json  {"include":[{"target":..,"batch":..},..]}
+#
+# ⛔ A database is staged only when every file new since the promoted one has a
+# result of pushed or present. A file with no result or a failure holds the
+# target for this run; the next run plans again, from upstream's database of
+# that moment, so a file upstream superseded while this run went clears by
+# itself. A file whose tag holds other bytes (replaced) holds the target until
+# a person decides, and stage says so at once.
+#
+# Environment: STAGING_TAG (default staging), VERIFY_BATCH_FILES (400),
+# VERIFY_BATCH_BYTES (2147483648), MIRROR_NAMESPACE, REGISTRY_USER,
+# REGISTRY_TOKEN.
+#
+# Exit status: 0 every target has a state, 1 the step itself could not run.
+set -euo pipefail
+SCRIPT_NAME=stage
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+need curl jq awk sha256sum timeout
+
+plan="${1:-}"
+results="${2:-}"
+out="${3:-}"
+if [ ! -d "$plan" ] || [ -z "$results" ] || [ -z "$out" ]; then
+  die "usage: scripts/stage PLAN RESULTS OUT"
+fi
+[ -n "$MIRROR_NAMESPACE" ] || die "MIRROR_NAMESPACE is not set"
+if [ "$MIRROR_REGISTRY_AUTH" != none ] && [ -z "${REGISTRY_TOKEN:-}" ]; then
+  die "REGISTRY_TOKEN is not set; staging pushes"
+fi
+STAGING_TAG="${STAGING_TAG:-staging}"
+[[ "$STAGING_TAG" =~ ^staging(-[a-z0-9]+(-[a-z0-9]+)*)?$ ]] ||
+  die "STAGING_TAG must be staging or staging-<slug>, not '$STAGING_TAG'"
+BATCH_FILES="${VERIFY_BATCH_FILES:-400}"
+BATCH_BYTES="${VERIFY_BATCH_BYTES:-2147483648}"
+mkdir -p "$out"
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+mkdir -p "$work/bin"
+ORAS="$("$REPO_ROOT/scripts/install-oras" "$work/bin")"
+ORAS_CONFIG="$work/oras-auth.json"
+oras_login "$ORAS" "$ORAS_CONFIG"
+
+# Every result line from every shard: target filename status seconds detail. No
+# results at all is ordinary: a database that changed by dropping packages
+# names no new file.
+: > "$work/results.tsv"
+if [ -d "$results" ]; then
+  find "$results" -name results.tsv -type f -exec cat {} + > "$work/results.tsv"
+fi
+
+set_state() {
+  printf '%s\n' "$2" > "$1/state"
+  printf '%s\n' "$3" > "$1/why"
+  log "$(basename "$1"): $2: $3"
+}
+
+stage_target() {
+  local pdir="$1" name dir state conf repo repo_path
+  name="$(basename "$pdir")"
+  dir="$out/$name"
+  rm -rf "$dir"
+  mkdir -p "$dir/batches"
+  state="$(cat "$pdir/state")"
+  if [ "$state" != pending ]; then
+    set_state "$dir" "$state" "$(cat "$pdir/why")"
+    return 0
+  fi
+  conf="$TARGETS_DIR/$name.conf"
+  target_check "$conf"
+  repo="$(target_get "$conf" repo)"
+  repo_path="$(target_repository "$conf")"
+
+  #-------------------------------------------------------------------------#
+  # Every new file accounted for
+  #-------------------------------------------------------------------------#
+  awk -F '\t' -v OFS='\t' '
+    FILENAME == ARGV[1] { k = $1 SUBSEP $2; st[k] = $3; det[k] = $5; next }
+    { k = $1 SUBSEP $2; s = (k in st) ? st[k] : "missing"; print $2, s, (k in det) ? det[k] : "no shard reported it" }
+  ' "$work/results.tsv" "$pdir/todo.tsv" > "$dir/accounted.tsv"
+
+  local n_replaced n_bad
+  n_replaced="$(awk -F '\t' '$2 == "replaced" { n++ } END { print n + 0 }' "$dir/accounted.tsv")"
+  n_bad="$(awk -F '\t' '$2 != "pushed" && $2 != "present" { n++ } END { print n + 0 }' "$dir/accounted.tsv")"
+  if [ "$n_replaced" -gt 0 ]; then
+    awk -F '\t' '$2 == "replaced"' "$dir/accounted.tsv" > "$dir/replaced.tsv"
+    set_state "$dir" replaced "$n_replaced file(s) have a tag holding other bytes under the same name, first: $(awk -F '\t' '$2 == "replaced" { print $1 ": " $3; exit }' "$dir/accounted.tsv")"
+    return 0
+  fi
+  if [ "$n_bad" -gt 0 ]; then
+    awk -F '\t' '$2 != "pushed" && $2 != "present"' "$dir/accounted.tsv" > "$dir/failing.tsv"
+    set_state "$dir" held "$n_bad file(s) are not on the registry, first: $(awk -F '\t' '$2 != "pushed" && $2 != "present" { print $1 ": " $2 ", " $3; exit }' "$dir/accounted.tsv")"
+    return 0
+  fi
+
+  #-------------------------------------------------------------------------#
+  # Push the database under the staging tag
+  #-------------------------------------------------------------------------#
+  local sd="$work/$name" db_sha files_sha f
+  rm -rf "$sd"
+  mkdir -p "$sd"
+  cp "$pdir/upstream.db" "$sd/$repo.db"
+  cp "$pdir/upstream.files" "$sd/$repo.files"
+  db_sha="$(sha256sum "$sd/$repo.db" | cut -d ' ' -f 1)"
+  files_sha="$(sha256sum "$sd/$repo.files" | cut -d ' ' -f 1)"
+  local layers=("./$repo.db:application/vnd.pkgforge.archlinux.db.v1" "./$repo.files:application/vnd.pkgforge.archlinux.files.v1")
+  for f in db files; do
+    if [ -f "$pdir/upstream.$f.sig" ]; then
+      cp "$pdir/upstream.$f.sig" "$sd/$repo.$f.sig"
+      layers+=("./$repo.$f.sig:application/pgp-signature")
+    fi
+  done
+
+  # shellcheck source=/dev/null # written by scripts/plan
+  . "$pdir/meta.env"
+  : "${PRIVATE:=0}" "${ARCH:?}" "${REPO:?}" "${UPSTREAM:?}" "${PACKAGES:?}" "${BYTES:?}" "${NEWEST_BUILDDATE:?}" "${FETCHED:?}"
+  local source_url
+  source_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-pkgforge-dev/mirror-archlinux}"
+  local oargs=()
+  mapfile -t oargs < <(oras_args)
+  local args=(
+    push
+    "${oargs[@]}"
+    --artifact-type application/vnd.pkgforge.archlinux.db.v1
+    --annotation "org.opencontainers.image.source=$source_url"
+    --annotation "org.opencontainers.image.title=$repo.db"
+    --annotation "org.opencontainers.image.revision=${GITHUB_SHA:-unknown}"
+    --annotation "dev.pkgforge.mirror.arch=$ARCH"
+    --annotation "dev.pkgforge.mirror.repo=$REPO"
+    --annotation "dev.pkgforge.mirror.upstream=$UPSTREAM"
+    --annotation "dev.pkgforge.mirror.db-sha256=$db_sha"
+    --annotation "dev.pkgforge.mirror.files-sha256=$files_sha"
+    --annotation "dev.pkgforge.mirror.packages=$PACKAGES"
+    --annotation "dev.pkgforge.mirror.bytes=$BYTES"
+    --annotation "dev.pkgforge.mirror.newest-builddate=$NEWEST_BUILDDATE"
+    --annotation "dev.pkgforge.mirror.fetched=$FETCHED"
+    --annotation "dev.pkgforge.mirror.run=${GITHUB_RUN_ID:-local}"
+    "$MIRROR_REGISTRY/$repo_path:$STAGING_TAG"
+    "${layers[@]}"
+  )
+  local rc=0 attempt
+  for attempt in 1 2 3; do
+    rc=0
+    (cd "$sd" && timeout --kill-after=30 300 "$ORAS" "${args[@]}" > "$sd/push.log" 2>&1) || rc=$?
+    [ "$rc" -ne 0 ] || break
+    warn "$name: staging push attempt $attempt ended $rc" "$(tail -n 3 "$sd/push.log")"
+    sleep $((attempt * attempt * 5))
+  done
+  if [ "$rc" -ne 0 ]; then
+    set_state "$dir" error "could not push $repo_path:$STAGING_TAG: $(tail -n 1 "$sd/push.log")"
+    return 0
+  fi
+
+  #-------------------------------------------------------------------------#
+  # Read it back, and pin it by digest from here on
+  #-------------------------------------------------------------------------#
+  local digest="" d
+  for attempt in 1 2 3 4 5; do
+    rc=0
+    registry_manifest "$repo_path" "$STAGING_TAG" "$sd/staged.json" || rc=$?
+    if [ "$rc" -eq "$REG_STATUS_OK" ]; then
+      read -r d _ _ <<< "$(manifest_layer "$sd/staged.json" "$repo.db")"
+      if [ "$d" = "sha256:$db_sha" ]; then
+        digest="sha256:$(sha256sum "$sd/staged.json" | cut -d ' ' -f 1)"
+        break
+      fi
+    fi
+    sleep $((attempt * 2))
+  done
+  if [ -z "$digest" ]; then
+    set_state "$dir" error "$repo_path:$STAGING_TAG does not read back with $repo.db $db_sha"
+    return 0
+  fi
+  {
+    printf 'DIGEST=%s\nTAG=%s\nDB_SHA256=%s\nFILES_SHA256=%s\nFETCHED=%s\nNEWEST_BUILDDATE=%s\n' \
+      "$digest" "$STAGING_TAG" "$db_sha" "$files_sha" "$FETCHED" "$NEWEST_BUILDDATE"
+  } > "$dir/staged.env"
+
+  #-------------------------------------------------------------------------#
+  # What a consumer sees: the same manifest, read with no credential at all.
+  # GitHub creates a package private and offers no API to change that, so the
+  # first push of a new target needs one click, and this is where it shows.
+  #-------------------------------------------------------------------------#
+  rc=0
+  REGISTRY_TOKEN='' registry_manifest "$repo_path" "$digest" "$sd/anon.json" || rc=$?
+  # This read is the authority: plan's own flag may come from a transient
+  # failure of its anonymous read, and is only a hint.
+  if [ "$rc" -ne "$REG_STATUS_OK" ]; then
+    printf 'https://github.com/orgs/%s/packages/container/%s/settings\n' "${MIRROR_NAMESPACE%%/*}" \
+      "$(printf '%s' "${repo_path#*/}" | sed 's|/|%2F|g')" > "$dir/settings-url"
+    set_state "$dir" private "$repo_path reads back with the workflow's token and not without one: the package is not public; $(cat "$dir/settings-url")"
+    return 0
+  fi
+
+  #-------------------------------------------------------------------------#
+  # Verification batches: every file new since the promoted database, plus a
+  # canary that is always present (the keyring, and the smallest package), so
+  # a run with nothing new still proves the path a consumer takes.
+  #-------------------------------------------------------------------------#
+  local keyring
+  keyring="$(target_get "$conf" keyring)"
+  {
+    awk -F '\t' '{ print $6 "\t" $5 }' "$pdir/todo.tsv"
+    if [ -n "$keyring" ]; then
+      awk -F '\t' -v k="$keyring" '$2 == k { print $2 "\t" $6 }' "$pdir/records.tsv"
+    fi
+    sort -t $'\t' -k6,6n "$pdir/records.tsv" | awk -F '\t' 'NR == 1 { print $2 "\t" $6 }'
+  } | awk -F '\t' '!seen[$1]++' > "$dir/verify.tsv"
+
+  local nfiles nbytes k
+  nfiles="$(awk 'END { print NR + 0 }' "$dir/verify.tsv")"
+  nbytes="$(awk -F '\t' '{ s += $2 } END { printf "%.0f\n", s }' "$dir/verify.tsv")"
+  k="$(awk -v b="$nbytes" -v f="$nfiles" -v bb="$BATCH_BYTES" -v bf="$BATCH_FILES" 'BEGIN {
+    kb = int((b + bb - 1) / bb); kf = int((f + bf - 1) / bf)
+    k = (kb > kf) ? kb : kf
+    if (k < 1) k = 1
+    print k
+  }')"
+  sort -t $'\t' -k2,2nr -k1,1 "$dir/verify.tsv" | awk -F '\t' -v k="$k" -v dir="$dir/batches" '
+    {
+      best = 0
+      for (i = 1; i < k; i++) if (load[i] < load[best]) best = i
+      load[best] += $2
+      print $1 > (dir "/" best ".txt")
+    }
+  '
+
+  set_state "$dir" staged "$repo_path@$digest, $(awk 'END { print NR + 0 }' "$dir/verify.tsv") package(s) to verify in $(find "$dir/batches" -name '*.txt' | awk 'END { print NR + 0 }') batch(es)"
+}
+
+for pdir in "$plan"/*/; do
+  pdir="${pdir%/}"
+  [ -f "$pdir/state" ] || continue
+  stage_target "$pdir"
+done
+
+#---------------------------------------------------------------------------#
+# The verify matrix
+#---------------------------------------------------------------------------#
+{
+  for dir in "$out"/*/; do
+    dir="${dir%/}"
+    [ -f "$dir/state" ] || continue
+    [ "$(cat "$dir/state")" = staged ] || continue
+    for b in "$dir"/batches/*.txt; do
+      [ -e "$b" ] || continue
+      jq -cn --arg t "$(basename "$dir")" --arg b "$(basename "$b" .txt)" '{target: $t, batch: $b}'
+    done
+  done
+} | jq -cs '{include: .}' > "$out/verify-matrix.json"
+
+{
+  printf 'target\tstate\twhy\n'
+  for dir in "$out"/*/; do
+    dir="${dir%/}"
+    [ -f "$dir/state" ] || continue
+    printf '%s\t%s\t%s\n' "$(basename "$dir")" "$(cat "$dir/state")" "$(cat "$dir/why")"
+  done
+} > "$out/summary.tsv"
+
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  {
+    printf 'verify_matrix=%s\n' "$(cat "$out/verify-matrix.json")"
+    if [ "$(jq '.include | length' "$out/verify-matrix.json")" -gt 0 ]; then
+      echo "has_batches=true"
+    else
+      echo "has_batches=false"
+    fi
+  } >> "$GITHUB_OUTPUT"
+fi

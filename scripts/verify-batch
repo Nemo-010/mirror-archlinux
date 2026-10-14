@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+#
+# Verify one batch of a staged database the way a consumer reads it: pacman,
+# in the target's own image, with the wrapper as its XferCommand and the staged
+# manifest, pinned by digest, as its only Server.
+#
+#   scripts/verify-batch STAGE TARGET BATCH OUT
+#
+# STAGE is scripts/stage's output. Writes OUT/verify-TARGET-BATCH.tsv:
+#   target batch result detail digest
+# where digest is the staged manifest this verdict is about, so a verdict left
+# over from another attempt is never taken for this one.
+# with result passed or failed, and the full pacman log beside it.
+#
+# ⭐ pacman checks what it always checks: every file's sha256 against the
+# database and every signature against the distribution's keyring, with its
+# own trust model, before it reports a download complete. A failure here is a
+# failure a consumer would have had.
+#
+# pacman reads a configuration written here, not the image's: one repository,
+# its staged manifest as the only Server, and DownloadUser = alpm, so the
+# wrapper runs as that user from a download-XXXXXX directory, the stock Arch
+# path. A target whose upstream signs its database is checked with
+# DatabaseRequired. The first batch of a target also reads the files database.
+#
+# The keyring is refreshed first, from the staged snapshot itself: pacman-key
+# --init gives the container a local key, the keyring package is installed with
+# the image's trust, and --populate is run again and must succeed, so a master
+# key added upstream is signed locally before any package is checked.
+#
+# Environment: MIRROR_NAMESPACE, CONTAINER_RUNTIME (docker or podman; docker
+# by default).
+# For the integration suite only: VERIFY_NETWORK (a container network, host
+# to reach a registry on the loopback) and VERIFY_TRUST_KEY (an armored
+# public key the container trusts, for packages signed by a test key).
+#
+# Exit status: 0 passed, 1 failed or could not run.
+set -euo pipefail
+SCRIPT_NAME=verify-batch
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+stage="${1:-}"
+target="${2:-}"
+batch="${3:-}"
+out="${4:-}"
+if [ ! -d "$stage" ] || [ -z "$target" ] || [ -z "$batch" ] || [ -z "$out" ]; then
+  die "usage: scripts/verify-batch STAGE TARGET BATCH OUT"
+fi
+case "$target$batch" in
+  *[!a-z0-9_.-]*) die "target and batch are names, not '$target' '$batch'" ;;
+esac
+[ -n "$MIRROR_NAMESPACE" ] || die "MIRROR_NAMESPACE is not set"
+RUNTIME="${CONTAINER_RUNTIME:-docker}"
+need "$RUNTIME" timeout
+mkdir -p "$out"
+report="$out/verify-$target-$batch.tsv"
+log_file="$out/verify-$target-$batch.log"
+
+verdict() {
+  printf '%s\t%s\t%s\t%s\t%s\n' "$target" "$batch" "$1" "$2" "${DIGEST:-unknown}" > "$report"
+  log "$target batch $batch: $1: $2"
+}
+trap '[ -f "$report" ] || verdict failed "ended before reaching a verdict"' EXIT
+
+conf="$TARGETS_DIR/$target.conf"
+target_check "$conf"
+repo="$(target_get "$conf" repo)"
+image="$(target_get "$conf" verify_image)"
+platform="$(target_get "$conf" verify_platform)"
+keyring="$(target_get "$conf" keyring)"
+db_siglevel=DatabaseOptional
+if [ "$(target_get "$conf" db_signed)" = yes ]; then
+  db_siglevel=DatabaseRequired
+fi
+files_db=0
+if [ "$batch" = 0 ]; then
+  files_db=1
+fi
+[ -n "$image" ] || die "$conf names no verify_image"
+names="$stage/$target/batches/$batch.txt"
+[ -s "$names" ] || die "no batch $names"
+# shellcheck source=/dev/null # written by scripts/stage
+. "$stage/$target/staged.env"
+: "${DIGEST:?}"
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"; [ -f "$report" ] || verdict failed "ended before reaching a verdict"' EXIT
+cp "$WRAPPER" "$work/pacman-oci"
+cp "$names" "$work/names.txt"
+: > "$work/trust.asc"
+if [ -n "${VERIFY_TRUST_KEY:-}" ]; then
+  cp "$VERIFY_TRUST_KEY" "$work/trust.asc"
+fi
+net_args=()
+if [ -n "${VERIFY_NETWORK:-}" ]; then
+  net_args=(--network "$VERIFY_NETWORK")
+fi
+server="$OCI_SCHEME://$MIRROR_REGISTRY/$(target_repository "$conf")@$DIGEST"
+
+cat > "$work/verify.sh" << 'EOS'
+set -euo pipefail
+repo="$1" server="$2" keyring="$3" files_db="$4" db_siglevel="$5"
+
+install -m 0755 /in/pacman-oci /usr/local/bin/pacman-oci
+
+cat > /tmp/pacman.conf << EOF
+[options]
+Architecture = auto
+CheckSpace
+SigLevel = Required $db_siglevel
+LocalFileSigLevel = Optional
+DownloadUser = alpm
+XferCommand = /usr/local/bin/pacman-oci %o %u
+
+[$repo]
+Server = $server
+EOF
+echo "== pacman.conf"
+grep -vE '^[[:space:]]*(#|$)' /tmp/pacman.conf
+
+pac() { pacman --config /tmp/pacman.conf --noconfirm "$@"; }
+
+echo "== keyring"
+pacman-key --init
+pacman-key --populate
+if [ -s /in/trust.asc ]; then
+  pacman-key --add /in/trust.asc
+  pacman-key --lsign-key "$(gpg --with-colons --show-keys /in/trust.asc | awk -F : '$1 == "fpr" && f == "" { f = $10 } END { print f }')"
+fi
+pac -Sy
+if [ -n "$keyring" ]; then
+  pac -Sdd "$keyring"
+  pacman-key --populate
+fi
+
+echo "== download and check $(wc -l < /in/names.txt) package(s)"
+rc=0
+xargs -a /in/names.txt pacman --config /tmp/pacman.conf --noconfirm -Swdd || rc=$?
+if [ "$rc" -ne 0 ]; then
+  echo "== the batch failed ($rc); each package alone, to name the ones at fault"
+  while IFS= read -r p; do
+    one=0
+    pac -Swdd "$p" > "/tmp/one.log" 2>&1 || one=$?
+    if [ "$one" -ne 0 ]; then
+      echo "CULPRIT $p"
+      sed 's/^/    /' /tmp/one.log | tail -n 6
+    fi
+  done < /in/names.txt
+  exit 1
+fi
+
+if [ "$files_db" = 1 ]; then
+  echo "== files database"
+  pac -Fy
+  pacman --config /tmp/pacman.conf -Fl "$(sed -n 1p /in/names.txt)" | sed -n 1,3p
+fi
+echo "== passed"
+EOS
+
+pull_rc=0
+for attempt in 1 2 3; do
+  pull_rc=0
+  timeout --kill-after=30 600 "$RUNTIME" pull --platform "$platform" "$image" > "$work/pull.log" 2>&1 || pull_rc=$?
+  [ "$pull_rc" -ne 0 ] || break
+  sleep $((attempt * 10))
+done
+if [ "$pull_rc" -ne 0 ]; then
+  cat "$work/pull.log" > "$log_file"
+  verdict failed "could not pull $image: $(tail -n 1 "$work/pull.log")"
+  exit 1
+fi
+
+rc=0
+timeout --kill-after=30 5400 "$RUNTIME" run --rm --platform "$platform" "${net_args[@]}" \
+  -v "$work/trust.asc:/in/trust.asc:ro" \
+  -v "$work/pacman-oci:/in/pacman-oci:ro" \
+  -v "$work/names.txt:/in/names.txt:ro" \
+  -v "$work/verify.sh:/in/verify.sh:ro" \
+  "$image" bash /in/verify.sh "$repo" "$server" "$keyring" "$files_db" "$db_siglevel" > "$log_file" 2>&1 || rc=$?
+
+if [ "$rc" -eq 0 ]; then
+  verdict passed "$(awk 'END { print NR + 0 }' "$names") package(s) read through the wrapper and checked by pacman"
+  exit 0
+fi
+culprits="$(sed -n 's/^CULPRIT //p' "$log_file" | tr '\n' ' ')"
+tail -n 40 "$log_file" >&2
+verdict failed "pacman refused the batch (status $rc)${culprits:+; at fault: $culprits}"
+exit 1

@@ -1,0 +1,111 @@
+# The test suites, on every push and pull request.
+#
+#   static       shellcheck, actionlint and the policy checks (tests/static)
+#   unit         the wrapper and the scripts, under three shells and three awks:
+#                dash and mawk here, bash and gawk in Arch, busybox in Alpine
+#   integration  the whole mirror against a local registry and upstream, and
+#                pacman installing through the wrapper (tests/integration)
+#   debloat      scripts/debloat-runner on a real runner, so code that a sync
+#                rarely needs is still seen to work
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Static suite
+        run: |
+          scripts/install-test-tools "$RUNNER_TEMP/bin"
+          PATH="$RUNNER_TEMP/bin:$PATH" tests/run.sh static
+
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Unit suite, dash and mawk
+        run: |
+          # Ubuntu's awk is gawk once gawk is installed; mawk is still there,
+          # and put first here, and both are asserted so an image change shows.
+          mkdir -p "$RUNNER_TEMP/mawk"
+          ln -sf /usr/bin/mawk "$RUNNER_TEMP/mawk/awk"
+          export PATH="$RUNNER_TEMP/mawk:$PATH"
+          if [ "$(readlink -f /bin/sh)" != /usr/bin/dash ]; then
+            echo "::error::/bin/sh is $(readlink -f /bin/sh), not dash"
+            exit 1
+          fi
+          if [ "$(readlink -f "$(command -v awk)")" != /usr/bin/mawk ]; then
+            echo "::error::awk is $(readlink -f "$(command -v awk)"), not mawk"
+            exit 1
+          fi
+          tests/run.sh unit
+      - name: Unit suite, bash and gawk (Arch)
+        run: |
+          # tag: base
+          image=docker.io/library/archlinux:base@sha256:3c64b538588416593f69a1aebd2f2ec0f2541b29159f32556fa7def2167147a0
+          docker run --rm -v "$PWD:/work:ro" -w /work "$image" bash -c 'pacman -Sy --noconfirm --needed jq > /dev/null && bash tests/run.sh unit'
+      - name: Unit suite, busybox (Alpine)
+        run: |
+          # tag: 3.22
+          image=docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+          docker run --rm -v "$PWD:/work:ro" -w /work "$image" sh -c 'apk add --no-cache bash curl jq > /dev/null && bash tests/run.sh unit'
+
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Integration suite
+        env:
+          CONTAINER_RUNTIME: docker
+        run: tests/run.sh integration
+
+  debloat:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Debloat, forced, and measured
+        run: |
+          before="$(df --output=avail -B1 "$RUNNER_TEMP" | awk 'NR == 2 { print $1 }')"
+          scripts/debloat-runner --dir "$RUNNER_TEMP"
+          after="$(df --output=avail -B1 "$RUNNER_TEMP" | awk 'NR == 2 { print $1 }')"
+          echo "freed $(((after - before) / 1073741824)) GiB"
+          # Seen to work means it freed something: a runner image that no
+          # longer carries any of these directories is worth knowing about.
+          [ "$after" -gt $((before + 1073741824)) ] || {
+            echo "::error::debloat-runner freed less than 1 GiB; the runner image changed under it"
+            exit 1
+          }

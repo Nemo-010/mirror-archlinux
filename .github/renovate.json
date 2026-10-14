@@ -1,0 +1,29 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Renovate proposes pin moves; a person merges them. Nothing here merges on its own: the verify image decides what this mirror accepts, so a change to it is reviewed.",
+    "Pins stay pins: actions by commit hash with the version in a comment, images by digest under a '# tag: <tag>' marker. The repository requires SHA-pinned actions, and tests/static/50-workflow-policy.sh fails a change that turns one back into a tag."
+  ],
+  "extends": ["config:recommended", ":disableDependencyDashboard"],
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Actions move weekly in one pull request, and only to a release at least three days old, so a release that is pulled or hijacked upstream has time to be noticed before it lands here.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "schedule": ["before 6am on monday"],
+      "minimumReleaseAge": "3 days"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "An image pinned by digest under a '# tag: <tag>' marker: the verify image of each target, and the images the tests run in.",
+      "managerFilePatterns": ["/^targets/[^/]+\\.conf$/", "/^\\.github/workflows/[^/]+\\.ya?ml$/", "/^tests/integration/[^/]+\\.sh$/"],
+      "matchStrings": [
+        "#\\s*tag:\\s*(?<currentValue>[A-Za-z0-9._-]+)\\s*\\n(?:[^\\n]*\\n){0,3}?[^\\n]*?(?<depName>docker\\.io/[a-z0-9._/-]+?)(?::[A-Za-z0-9._-]+)?@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ]
+}

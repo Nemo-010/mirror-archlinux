@@ -1,0 +1,344 @@
+# Mirror every enabled target to GHCR: plan, mirror in shards, stage, verify
+# with pacman through the wrapper, promote, report.
+#
+# ⛔ A database reaches latest only after every file it names is on the
+# registry and every file new since the promoted database has passed pacman's
+# own checks through the wrapper. Targets are independent: one held target
+# never holds another. HISTORY/design.md has the whole design.
+#
+# promote runs only on main. A run from any other branch does everything else,
+# writes only write-once package tags and its own staging-<branch> tag, and
+# never moves latest.
+name: Sync
+
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: Targets (arch-repo, space separated); empty for every enabled one
+        type: string
+        default: ''
+      max_parallel:
+        description: Most matrix jobs at once; the organisation shares 20
+        type: string
+        default: '8'
+      parallel:
+        description: Files mirrored at once in each shard
+        type: string
+        default: '4'
+      debloat:
+        description: Free runner disk before mirroring
+        type: choice
+        options: [auto, always, never]
+        default: auto
+      allow_older:
+        description: Targets whose upstream may go back to older builds this run (comma separated)
+        type: string
+        default: ''
+
+permissions: {}
+
+concurrency:
+  group: sync-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  MIRROR_REGISTRY: ghcr.io
+  SHARD_BYTES: '536870912'
+  SHARD_FILES: '400'
+  MAX_SHARDS: '16'
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_files: ${{ steps.plan.outputs.has_files }}
+      has_work: ${{ steps.plan.outputs.has_work }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Plan
+        id: plan
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          TARGETS: ${{ inputs.targets }}
+          ALLOW_OLDER: ${{ inputs.allow_older }}
+        run: |
+          args=()
+          for t in $TARGETS; do
+            case "$t" in
+              *[!a-z0-9_.-]*)
+                echo "::error::not a target name: $t"
+                exit 1
+                ;;
+            esac
+            args+=("targets/$t.conf")
+          done
+          scripts/plan "$RUNNER_TEMP/plan" "${args[@]}"
+      - name: Upload the plan
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plan
+          path: ${{ runner.temp }}/plan
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true
+
+  mirror:
+    needs: plan
+    if: ${{ needs.plan.outputs.has_files == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel || '8') }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plan
+          path: ${{ runner.temp }}/plan
+      - name: Mirror the shard
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          PARALLEL: ${{ inputs.parallel || '4' }}
+          DEBLOAT: ${{ inputs.debloat || 'auto' }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          # The disk this runner really has, kept in the log: GitHub guarantees
+          # 14 GB and is moving runners to a single disk.
+          df -h / "$RUNNER_TEMP"
+          scripts/mirror-shard "$RUNNER_TEMP/plan/shards/$SHARD_INDEX.tsv" "$RUNNER_TEMP/results/$SHARD_INDEX"
+      - name: Upload the results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-${{ matrix.shard }}
+          path: ${{ runner.temp }}/results
+          retention-days: 7
+          if-no-files-found: warn
+          overwrite: true
+
+  stage:
+    needs: [plan, mirror]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.has_work == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      verify_matrix: ${{ steps.stage.outputs.verify_matrix }}
+      has_batches: ${{ steps.stage.outputs.has_batches }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plan
+          path: ${{ runner.temp }}/plan
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: results-*
+          path: ${{ runner.temp }}/results
+          merge-multiple: false
+      - name: Stage
+        id: stage
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/results"
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            export STAGING_TAG=staging
+          else
+            slug="$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-' | sed 's/--*/-/g; s/^-//; s/-$//' | cut -c1-40)"
+            export STAGING_TAG="staging-${slug:-branch}"
+          fi
+          scripts/stage "$RUNNER_TEMP/plan" "$RUNNER_TEMP/results" "$RUNNER_TEMP/stage"
+      - name: Upload the stage
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stage
+          path: ${{ runner.temp }}/stage
+          retention-days: 7
+          if-no-files-found: warn
+          overwrite: true
+
+  verify:
+    needs: stage
+    if: ${{ !cancelled() && needs.stage.result == 'success' && needs.stage.outputs.has_batches == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel || '8') }}
+      matrix: ${{ fromJSON(needs.stage.outputs.verify_matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: stage
+          path: ${{ runner.temp }}/stage
+      - name: Verify with pacman through the wrapper
+        env:
+          TARGET: ${{ matrix.target }}
+          BATCH: ${{ matrix.batch }}
+        run: scripts/verify-batch "$RUNNER_TEMP/stage" "$TARGET" "$BATCH" "$RUNNER_TEMP/verify"
+      - name: Upload the verdict
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verify-${{ matrix.target }}-${{ matrix.batch }}
+          path: ${{ runner.temp }}/verify
+          retention-days: 7
+          if-no-files-found: warn
+          overwrite: true
+
+  promote:
+    needs: [stage, verify]
+    if: ${{ !cancelled() && needs.stage.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: stage
+          path: ${{ runner.temp }}/stage
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: verify-*
+          path: ${{ runner.temp }}/verify
+          merge-multiple: false
+      - name: Promote each verified target
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          # Each target decides alone: one that is refused never holds another.
+          mkdir -p "$RUNNER_TEMP/verify" "$RUNNER_TEMP/promote"
+          : > "$RUNNER_TEMP/promote/results.tsv"
+          for d in "$RUNNER_TEMP"/stage/*/; do
+            d="${d%/}"
+            [ -f "$d/state" ] || continue
+            [ "$(cat "$d/state")" = staged ] || continue
+            t="$(basename "$d")"
+            rc=0
+            scripts/promote "$RUNNER_TEMP/stage" "$RUNNER_TEMP/verify" "$t" 2> "$RUNNER_TEMP/promote/$t.err" || rc=$?
+            cat "$RUNNER_TEMP/promote/$t.err" >&2
+            if [ "$rc" -eq 0 ]; then
+              printf '%s\tpromoted\t%s\n' "$t" "$(cut -f 3,4 "$d/promoted.tsv" | tr '\t' ' ')" >> "$RUNNER_TEMP/promote/results.tsv"
+            else
+              printf '%s\tfailed\t%s\n' "$t" "$(grep -m 1 'promote:' "$RUNNER_TEMP/promote/$t.err" | tr '\t' ' ')" >> "$RUNNER_TEMP/promote/results.tsv"
+            fi
+          done
+      - name: Upload the promotions
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: promote
+          path: ${{ runner.temp }}/promote
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+  report:
+    needs: [plan, mirror, stage, verify, promote]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Each artifact into a directory of its own, by a pattern so one that a
+      # skipped job never made is not an error. Whether a single match lands in
+      # DIR or in DIR/<name> has changed between versions of the action; the
+      # step below accepts either.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: plan
+          path: ${{ runner.temp }}/dl-plan
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: stage
+          path: ${{ runner.temp }}/dl-stage
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: promote
+          path: ${{ runner.temp }}/dl-promote
+      - name: Report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRACK_ISSUES: ${{ github.ref == 'refs/heads/main' && '1' || '0' }}
+        run: |
+          # dl-NAME/NAME when the action made a subdirectory, dl-NAME when not
+          pick() {
+            if [ -d "$RUNNER_TEMP/dl-$1/$1" ]; then
+              echo "$RUNNER_TEMP/dl-$1/$1"
+            else
+              mkdir -p "$RUNNER_TEMP/dl-$1"
+              echo "$RUNNER_TEMP/dl-$1"
+            fi
+          }
+          plan="$(pick plan)"
+          stage="$(pick stage)"
+          promote="$(pick promote)"
+          touch "$promote/results.tsv"
+          scripts/report "$plan" "$stage" "$promote/results.tsv"
+
+  # No needs, in either direction: this runs whatever the sync does, and the
+  # watchdog workflow runs the same two checks, so each witnesses the other.
+  keepalive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Keep every schedule enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/keep-schedules-enabled
+      - name: Check every schedule fired
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/check-schedules-fired

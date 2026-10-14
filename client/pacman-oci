@@ -1,0 +1,657 @@
+#!/bin/sh
+#
+# pacman-oci: let pacman read a repository that is stored on an OCI registry.
+#
+#   /etc/pacman.conf
+#     XferCommand = /usr/local/bin/pacman-oci %o %u
+#     [core]
+#     Server = oci://ghcr.io/pkgforge-dev/mirror-archlinux/$arch/$repo
+#     Include = /etc/pacman.d/mirrorlist
+#
+# pacman runs the XferCommand for every file it downloads, from every Server in
+# turn, and moves to the next Server when the command exits non-zero. An
+# oci:// Server is read from the registry; any other URL is handed to curl, so
+# the ordinary mirrors after it keep working as the fallback.
+#
+#   pacman-oci OUTPUT URL       the XferCommand form
+#   pacman-oci --tag FILENAME   the tag a package file is stored under
+#   pacman-oci --tags           the same for filenames on stdin, FILENAME<TAB>TAG out
+#   pacman-oci --json FILE      the JSON parser alone, POINTER<TAB>VALUE out
+#   pacman-oci --version
+#
+# URL forms:
+#   oci://HOST/REPOSITORY/FILE            the database from tag latest
+#   oci://HOST/REPOSITORY:TAG/FILE        the database from a tag, e.g. :2026.10.13
+#   oci://HOST/REPOSITORY@sha256:HEX/FILE the database from one manifest: the only pin
+#   oci+http://HOST/...                   plain http, for a local test registry only
+# A package file (*.pkg.tar, *.pkg.tar.*) and its .sig are always found by the
+# package's own tag, whichever database the URL names. A database signature is
+# found by the content of the database pacman took just before it.
+#
+# ⭐ Everything this reads is checked before pacman sees it: a manifest asked
+# for by digest must hash to that digest, a blob's size and sha256 must equal
+# its descriptor, and pacman then checks the database's sha256 and the package
+# signature as it does for any mirror.
+#
+# pacman runs this with fork and execvp, never through a shell. With
+# DownloadUser set (stock Arch) it runs as that user, from a download-XXXXXX
+# directory inside the sync or cache directory; without it, as root. Nothing is
+# written but OUTPUT and one private temporary directory, removed on exit.
+#
+# Needs curl, awk, sed, sha256sum, mktemp.
+#
+# Environment: PACMAN_OCI_DEBUG=1 prints every request to stderr.
+# PACMAN_OCI_NO_DUMMY=1 skips the dummy token GHCR accepts for public packages
+# and goes straight to the registry's token flow; it exists so that flow is
+# exercised on schedule.
+#
+# Exit status: 0 the file is at OUTPUT, 1 not here (pacman tries the next
+# Server), 2 usage.
+
+LC_ALL=C
+export LC_ALL
+
+PACMAN_OCI_VERSION=1
+
+usage() {
+  printf 'pacman-oci: %s\n' "$1" >&2
+  printf 'usage: pacman-oci OUTPUT URL | --tag FILENAME | --tags | --json FILE | --version\n' >&2
+  exit 2
+}
+
+debug() {
+  if [ "${PACMAN_OCI_DEBUG:-0}" = 1 ]; then
+    printf 'pacman-oci: %s\n' "$1" >&2
+  fi
+}
+
+#---------------------------------------------------------------------------#
+# Tags
+#
+# A package filename uses [a-z0-9@._+:-] and, rarely, upper case. A tag allows
+# [A-Za-z0-9._-], at most 128, not starting with . or -, and GHCR resolves tags
+# without regard to case (measured: latest, LATEST and Latest name one
+# manifest), so every tag here is lower case. The mapping escapes with _ and is
+# injective: + is _p, : is _c, @ is _a, and a literal _ becomes _u only when the
+# character after it is one of p c a u, so x86_64 stays x86_64. A name with
+# upper case, or one the mapping cannot carry, is stored under fn- and the hex
+# sha256 of the name: lower case, no dot, and clear of the sha256-<hex> tags the
+# OCI referrers scheme uses.
+#---------------------------------------------------------------------------#
+hash_tag() {
+  printf 'fn-%s\n' "$(printf '%s' "$1" | sha256sum | cut -d ' ' -f 1)"
+}
+
+TAB=$(printf '\t')
+
+# Filenames on stdin, one per line; "FILENAME<TAB>TAG" on stdout. This is the
+# only implementation of the mapping: --tag and --tags both come through here.
+tags_of() {
+  sed -e 'h' \
+    -e 's/_\([pcau]\)/_u\1/g' -e 's/+/_p/g' -e 's/:/_c/g' -e 's/@/_a/g' \
+    -e 'x' -e 'G' -e "s/\\n/$TAB/" |
+    awk -F '\t' '
+      $1 == "" || $1 ~ /[^a-z0-9@._+:-]/ || $2 !~ /^[a-z0-9_][a-z0-9._-]*$/ || length($2) > 128 {
+        print $1 "\t-"; next
+      }
+      { print }
+    ' |
+    while IFS="$TAB" read -r _name _tag; do
+      if [ "$_tag" = - ]; then
+        _tag=$(hash_tag "$_name")
+      fi
+      printf '%s\t%s\n' "$_name" "$_tag"
+    done
+}
+
+oci_tag() {
+  printf '%s\n' "$1" | tags_of | cut -f 2
+}
+
+#---------------------------------------------------------------------------#
+# JSON
+#
+# A small, strict parser in POSIX awk. Each scalar becomes one line:
+#   POINTER<TAB>VALUE
+# with an RFC 6901 pointer (/layers/0/digest). Key order and whitespace do not
+# matter. A string holding a control character, raw or escaped, is refused:
+# nothing this reads has one, and a value that could carry a tab or a newline
+# could forge a line of the output. \uXXXX above U+001F is kept as written.
+# Anything that is not JSON is refused, never guessed at.
+#---------------------------------------------------------------------------#
+# shellcheck disable=SC2016 # an awk program: awk expands it, the shell must not
+JSON_AWK='
+function fail(m) { printf "pacman-oci: not JSON: %s at byte %d\n", m, pos > "/dev/stderr"; bad = 1; exit 3 }
+function ws(  c) {
+  while (pos <= n) {
+    c = substr(s, pos, 1)
+    if (c == " " || c == "\t" || c == "\n" || c == "\r") pos++
+    else break
+  }
+}
+function key(k) { gsub(/~/, "~0", k); gsub(/\//, "~1", k); return k }
+function str(  out, c, h) {
+  pos++
+  out = ""
+  while (pos <= n) {
+    c = substr(s, pos, 1)
+    if (c == "\"") { pos++; return out }
+    if (c == "\\") {
+      c = substr(s, pos + 1, 1)
+      if (c == "\"" || c == "\\" || c == "/") { out = out c; pos += 2; continue }
+      if (c == "u") {
+        h = substr(s, pos + 2, 4)
+        if (h !~ /^[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$/) fail("bad \\u escape")
+        if (h ~ /^00[01]/) fail("a control character in a string")
+        out = out "\\u" h
+        pos += 6
+        continue
+      }
+      if (c == "b" || c == "f" || c == "n" || c == "r" || c == "t") fail("a control character in a string")
+      fail("bad escape")
+    }
+    if (c < " ") fail("a control character in a string")
+    out = out c
+    pos++
+  }
+  fail("unterminated string")
+}
+function value(ptr, depth,  c, k, i) {
+  if (depth > 32) fail("nested too deep")
+  ws()
+  if (pos > n) fail("value expected")
+  c = substr(s, pos, 1)
+  if (c == "{") {
+    pos++
+    ws()
+    if (substr(s, pos, 1) == "}") { pos++; return }
+    for (;;) {
+      ws()
+      if (substr(s, pos, 1) != "\"") fail("key expected")
+      k = str()
+      ws()
+      if (substr(s, pos, 1) != ":") fail(": expected")
+      pos++
+      value(ptr "/" key(k), depth + 1)
+      ws()
+      c = substr(s, pos, 1)
+      if (c == ",") { pos++; continue }
+      if (c == "}") { pos++; return }
+      fail(", or } expected")
+    }
+  }
+  if (c == "[") {
+    pos++
+    ws()
+    if (substr(s, pos, 1) == "]") { pos++; return }
+    for (i = 0; ; i++) {
+      value(ptr "/" i, depth + 1)
+      ws()
+      c = substr(s, pos, 1)
+      if (c == ",") { pos++; continue }
+      if (c == "]") { pos++; return }
+      fail(", or ] expected")
+    }
+  }
+  if (c == "\"") { printf "%s\t%s\n", ptr, str(); return }
+  if (match(substr(s, pos), /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?/) || match(substr(s, pos), /^(true|false|null)/)) {
+    printf "%s\t%s\n", ptr, substr(s, pos, RLENGTH)
+    pos += RLENGTH
+    return
+  }
+  fail("value expected")
+}
+{ s = s $0 "\n" }
+END {
+  if (bad) exit 3
+  n = length(s)
+  pos = 1
+  value("", 0)
+  ws()
+  if (pos <= n) fail("trailing data")
+}
+'
+
+json_flat() {
+  awk "$JSON_AWK" "$1"
+}
+
+# The value at one pointer, from a flattened file. Empty when absent. Values
+# reach awk through the environment, which awk reads as they are; -v would
+# interpret backslashes in them.
+flat_get() {
+  P="$2" awk -F '\t' '$1 == ENVIRON["P"] { print $2; exit }' "$1"
+}
+
+#---------------------------------------------------------------------------#
+# Arguments
+#---------------------------------------------------------------------------#
+case ${1:-} in
+  --version)
+    printf 'pacman-oci %s\n' "$PACMAN_OCI_VERSION"
+    exit 0
+    ;;
+  --tag)
+    [ "$#" -eq 2 ] || usage '--tag takes one filename'
+    case $2 in
+      *'
+'*) usage '--tag takes one filename' ;;
+    esac
+    oci_tag "$2"
+    exit 0
+    ;;
+  --tags)
+    [ "$#" -eq 1 ] || usage '--tags reads filenames on stdin'
+    tags_of
+    exit 0
+    ;;
+  --json)
+    # The parser on its own, for the test suite.
+    [ "$#" -eq 2 ] || usage '--json takes one file'
+    json_flat "$2"
+    exit $?
+    ;;
+esac
+
+[ "$#" -eq 2 ] || usage 'two arguments expected'
+out=$1
+url=$2
+[ -n "$out" ] || usage 'OUTPUT is empty'
+
+# Every failure path removes OUTPUT as well as the working directory: pacman
+# never deletes a .part after a failed attempt.
+work=""
+# shellcheck disable=SC2329 # run by the EXIT trap
+cleanup() {
+  if [ -n "$work" ]; then
+    rm -rf -- "$work"
+  fi
+}
+trap cleanup EXIT
+trap 'cleanup; rm -f -- "$out"; exit 1' HUP INT TERM
+
+# A failure pacman recovers from by trying the next Server. Quiet unless asked,
+# because a database signature the upstream never published is ordinary.
+miss() {
+  debug "$1"
+  rm -f -- "$out"
+  exit 1
+}
+
+# A failure a person should see: the registry answered something it should not.
+broken() {
+  printf 'pacman-oci: %s\n' "$1" >&2
+  rm -f -- "$out"
+  exit 1
+}
+
+if [ -t 2 ]; then
+  PROGRESS=--progress-bar
+else
+  PROGRESS=--silent
+fi
+
+# curl's transient set (timeouts, 408, 429, 500, 502, 503, 504), honouring
+# Retry-After, starting no new try after 30 seconds: pacman downloads one file
+# at a time, so a longer window would stall a whole upgrade during an outage.
+# A manifest or a token is a few KiB, so each try of one gets 15 seconds and a
+# 64 KiB cap: the parser below is plain awk, and a body far larger than any
+# real manifest must fail fast, not keep pacman waiting.
+RETRY='--retry 2 --retry-max-time 30'
+
+#---------------------------------------------------------------------------#
+# Not ours: an ordinary download. pacman's own downloader is off whenever an
+# XferCommand is set, so this is what fetches from the fallback mirrors.
+#---------------------------------------------------------------------------#
+case $url in
+  oci://* | oci+http://*) ;;
+  *)
+    rc=0
+    # shellcheck disable=SC2086 # RETRY is several words on purpose
+    curl -q --fail --location --show-error "$PROGRESS" \
+      --connect-timeout 20 --speed-limit 1024 --speed-time 60 \
+      $RETRY --max-redirs 10 \
+      --output "$out" --url "$url" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      rm -f -- "$out"
+      exit 1
+    fi
+    exit 0
+    ;;
+esac
+
+#---------------------------------------------------------------------------#
+# Parse oci://HOST/REPOSITORY[:TAG|@DIGEST]/FILE
+#---------------------------------------------------------------------------#
+case $url in
+  oci://*)
+    scheme=https
+    rest=${url#oci://}
+    ;;
+  *)
+    scheme=http
+    rest=${url#oci+http://}
+    ;;
+esac
+
+file=${rest##*/}
+ref=${rest%/*}
+host=${ref%%/*}
+path=${ref#*/}
+if [ "$ref" = "$rest" ] || [ "$host" = "$ref" ]; then
+  broken "not oci://HOST/REPOSITORY/FILE: $url"
+fi
+
+ref_tag=""
+ref_digest=""
+case $path in
+  *@*)
+    ref_digest=${path#*@}
+    repo=${path%%@*}
+    ;;
+  *)
+    case ${path##*/} in
+      *:*)
+        ref_tag=${path##*:}
+        repo=${path%:*}
+        ;;
+      *) repo=$path ;;
+    esac
+    ;;
+esac
+
+printf '%s\n' "$host" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]+)?$' ||
+  broken "not a registry host: $host"
+printf '%s\n' "$repo" | grep -Eq '^[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*$' ||
+  broken "not a repository name: $repo"
+if [ -n "$ref_tag" ]; then
+  printf '%s\n' "$ref_tag" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$' || broken "not a tag: $ref_tag"
+fi
+if [ -n "$ref_digest" ]; then
+  printf '%s\n' "$ref_digest" | grep -Eq '^sha256:[0-9a-f]{64}$' || broken "not a sha256 digest: $ref_digest"
+fi
+# No shell ever reads FILE: it becomes a tag, which the mapping escapes or
+# hashes, and reaches awk through the environment. A name makepkg could never
+# produce is refused: empty, a space, a control character, or a byte above 0x7e.
+case $file in
+  '' | . | .. | *[!!-~]*) broken "not a file name pacman asks for: $file" ;;
+esac
+
+sha256_of() {
+  sha256sum "$1" | cut -d ' ' -f 1
+}
+
+size_of() {
+  wc -c < "$1" | tr -d ' '
+}
+
+# pacman writes OUTPUT in its sync or cache dir, or, with DownloadUser set, in
+# a download-XXXXXX dir inside it. Either way the files it finished earlier in
+# this run sit beside OUTPUT, and the ones it held before sit one level up.
+out_dir=$(dirname -- "$out")
+case $(basename -- "$out_dir") in
+  download-*) held_dir=$(dirname -- "$out_dir") ;;
+  *) held_dir=$out_dir ;;
+esac
+
+# What to ask the registry for, and what must be in the answer.
+#   pkg     a package: its own tag, a layer named FILE
+#   pkgsig  its signature: the package's tag, a layer named FILE, never optional
+#   dbsig   a database signature: the manifest of the database pacman just took,
+#           found by that database's content (tag db-HEX or files-HEX)
+#   db      a database: the tag, digest or latest from the URL
+pair_hex=""
+case $file in
+  *.pkg.tar.sig | *.pkg.tar.*.sig)
+    kind=pkgsig
+    manifest_ref=$(oci_tag "${file%.sig}")
+    ;;
+  *.pkg.tar | *.pkg.tar.*)
+    kind=pkg
+    manifest_ref=$(oci_tag "$file")
+    ;;
+  *.db.sig | *.files.sig)
+    kind=dbsig
+    sibling="$out_dir/${file%.sig}"
+    manifest_ref=${ref_digest:-${ref_tag:-latest}}
+    if [ -f "$sibling" ]; then
+      pair_hex=$(sha256_of "$sibling")
+      case $file in
+        *.db.sig) manifest_ref="db-$pair_hex" ;;
+        *) manifest_ref="files-$pair_hex" ;;
+      esac
+    fi
+    ;;
+  *)
+    kind=db
+    manifest_ref=${ref_digest:-${ref_tag:-latest}}
+    ;;
+esac
+
+base="$scheme://$host/v2/$repo"
+if [ "$scheme" = https ]; then
+  PROTO='=https'
+else
+  PROTO='=http,https'
+fi
+
+# With DownloadUser set, this runs as that user with root's environment, so a
+# TMPDIR only root can write is possible; the directory pacman writes OUTPUT to
+# is always writable by whoever runs this.
+tmp_base=${TMPDIR:-/tmp}
+if [ ! -d "$tmp_base" ] || [ ! -w "$tmp_base" ]; then
+  tmp_base=$out_dir
+fi
+work=$(mktemp -d "$tmp_base/pacman-oci.XXXXXX") || broken "could not make a temporary directory in $tmp_base"
+work_hdr="$work/headers"
+work_json="$work/body.json"
+work_flat="$work/body.flat"
+
+#---------------------------------------------------------------------------#
+# Requests
+#
+# A public GHCR repository answers a dummy bearer token, which saves the token
+# round trip on every file. A registry that refuses it answers 401, or 403 with
+# no challenge (GHCR, measured), so the same request is then made with no
+# Authorization at all to read the Bearer challenge, and the anonymous token it
+# names is fetched once. Manifest and token requests follow no redirect: GHCR
+# answers a reference it cannot parse with 303 to an HTML page.
+#---------------------------------------------------------------------------#
+AUTH='Bearer QQ=='
+if [ "${PACMAN_OCI_NO_DUMMY:-0}" = 1 ]; then
+  AUTH=''
+fi
+
+# get URL FILE: the body into FILE, the HTTP status into $code (000 when
+# nothing answered), the headers into $work_hdr
+get() {
+  code=000
+  if [ -n "$AUTH" ]; then
+    # shellcheck disable=SC2086 # RETRY is several words on purpose
+    code=$(curl -q --silent --show-error --proto "$PROTO" --max-filesize 65536 \
+      --connect-timeout 10 --max-time 15 $RETRY \
+      --user-agent "pacman-oci/$PACMAN_OCI_VERSION" \
+      --header "Authorization: $AUTH" \
+      --header 'Accept: application/vnd.oci.image.manifest.v1+json' \
+      --dump-header "$work_hdr" --output "$2" --write-out '%{http_code}' --url "$1") || code=000
+  else
+    # shellcheck disable=SC2086 # RETRY is several words on purpose
+    code=$(curl -q --silent --show-error --proto "$PROTO" --max-filesize 65536 \
+      --connect-timeout 10 --max-time 15 $RETRY \
+      --user-agent "pacman-oci/$PACMAN_OCI_VERSION" \
+      --header 'Accept: application/vnd.oci.image.manifest.v1+json' \
+      --dump-header "$work_hdr" --output "$2" --write-out '%{http_code}' --url "$1") || code=000
+  fi
+  debug "GET $1 -> $code"
+}
+
+# The anonymous pull token named by the Bearer challenge in $work_hdr. The
+# scope asked for is always this repository's pull scope.
+challenge() {
+  _www=$(tr -d '\r' < "$work_hdr" | sed -n 's/^[Ww][Ww][Ww]-[Aa][Uu][Tt][Hh][Ee][Nn][Tt][Ii][Cc][Aa][Tt][Ee]: *[Bb]earer //p' | sed -n '$p')
+  [ -n "$_www" ] || return 1
+  _realm=$(printf '%s\n' "$_www" | sed -n 's/.*realm="\([^"]*\)".*/\1/p')
+  _service=$(printf '%s\n' "$_www" | sed -n 's/.*service="\([^"]*\)".*/\1/p')
+  case $_realm in
+    https://*) ;;
+    http://*) [ "$scheme" = http ] || return 1 ;;
+    *) return 1 ;;
+  esac
+  debug "token from $_realm service=$_service scope=repository:$repo:pull"
+  # shellcheck disable=SC2086 # RETRY is several words on purpose
+  curl -q --silent --show-error --fail --proto "$PROTO" --max-filesize 65536 \
+    --connect-timeout 10 --max-time 15 $RETRY \
+    --user-agent "pacman-oci/$PACMAN_OCI_VERSION" \
+    --get --data-urlencode "service=$_service" --data-urlencode "scope=repository:$repo:pull" \
+    --output "$work_json" --url "$_realm" || return 1
+  json_flat "$work_json" > "$work_flat" || return 1
+  _token=$(flat_get "$work_flat" /token)
+  [ -n "$_token" ] || _token=$(flat_get "$work_flat" /access_token)
+  [ -n "$_token" ] || return 1
+  AUTH="Bearer $_token"
+  return 0
+}
+
+# fetch_manifest REF: the body into $work_json, the status into $code. Runs in
+# this shell, never in $( ), so a token won here is the one the blob uses.
+fetch_manifest() {
+  get "$base/manifests/$1" "$work_json"
+  case $code in
+    401 | 403)
+      if [ "${tried_challenge:-0}" = 0 ]; then
+        tried_challenge=1
+        if [ "$code" = 403 ]; then
+          AUTH=''
+          get "$base/manifests/$1" "$work_json"
+        fi
+        if challenge; then
+          get "$base/manifests/$1" "$work_json"
+        fi
+      fi
+      ;;
+  esac
+}
+
+fetch_manifest "$manifest_ref"
+
+# A database signature whose content tag is missing: read the URL's own
+# manifest, and use it only if it names the very database pacman holds.
+if [ "$kind" = dbsig ] && [ -n "$pair_hex" ] && [ "$code" = 404 ]; then
+  manifest_ref=${ref_digest:-${ref_tag:-latest}}
+  fetch_manifest "$manifest_ref"
+fi
+
+case $code in
+  200) ;;
+  404) miss "no manifest $manifest_ref in $host/$repo" ;;
+  401 | 403) broken "the registry refused to serve $host/$repo:$manifest_ref (HTTP $code); is the package public?" ;;
+  000) miss "no answer from $host" ;;
+  *) miss "HTTP $code for $host/$repo:$manifest_ref" ;;
+esac
+
+# A manifest asked for by digest must be that digest, or pinning means nothing.
+case $manifest_ref in
+  sha256:*)
+    if [ "$(sha256_of "$work_json")" != "${manifest_ref#sha256:}" ]; then
+      broken "$host/$repo answered $manifest_ref with a manifest of another digest"
+    fi
+    ;;
+esac
+
+json_flat "$work_json" > "$work_flat" || broken "the manifest for $host/$repo:$manifest_ref is not JSON"
+media=$(flat_get "$work_flat" /mediaType)
+case $media in
+  application/vnd.oci.image.manifest.v1+json | '') ;;
+  *) broken "$host/$repo:$manifest_ref is a $media, not an image manifest" ;;
+esac
+
+# layer NAME -> the index of the one layer whose title is NAME; empty when
+# none, "many" when the manifest is ambiguous.
+layer() {
+  T="$1" awk -F '\t' '
+    $1 ~ /^\/layers\/[0-9]+\/annotations\/org\.opencontainers\.image\.title$/ && $2 == ENVIRON["T"] {
+      split($1, p, "/"); found = found " " p[3]; count++
+    }
+    END { if (count == 1) print substr(found, 2); else if (count > 1) print "many" }
+  ' "$work_flat"
+}
+
+if [ "$kind" = dbsig ] && [ -n "$pair_hex" ]; then
+  db_idx=$(layer "${file%.sig}")
+  case $db_idx in
+    '' | many) miss "$host/$repo:$manifest_ref does not hold one ${file%.sig}" ;;
+  esac
+  if [ "$(flat_get "$work_flat" "/layers/$db_idx/digest")" != "sha256:$pair_hex" ]; then
+    miss "$host/$repo:$manifest_ref moved on from the ${file%.sig} pacman holds, so its signature is not this one"
+  fi
+fi
+
+idx=$(layer "$file")
+case $idx in
+  many) broken "$host/$repo:$manifest_ref has more than one layer named $file" ;;
+  '')
+    if [ "$kind" = pkgsig ]; then
+      broken "$file: no signature layer in $host/$repo:$manifest_ref; pacman tries no other server for a .sig"
+    fi
+    miss "$host/$repo:$manifest_ref has no layer named $file"
+    ;;
+esac
+digest=$(flat_get "$work_flat" "/layers/$idx/digest")
+size=$(flat_get "$work_flat" "/layers/$idx/size")
+printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$' || broken "layer $file has digest '$digest', not sha256"
+printf '%s\n' "$size" | grep -Eq '^(0|[1-9][0-9]{0,14})$' || broken "layer $file has size '$size'"
+hex=${digest#sha256:}
+
+# pacman re-downloads every database on each -Sy when an XferCommand is set.
+# When the copy it already holds is the one the registry names, hand that back.
+held="$held_dir/$file"
+if [ -f "$held" ] && [ "$(size_of "$held")" = "$size" ] && [ "$(sha256_of "$held")" = "$hex" ]; then
+  if cp -- "$held" "$out"; then
+    debug "$file unchanged, $digest"
+    exit 0
+  fi
+  rm -f -- "$out"
+fi
+
+#---------------------------------------------------------------------------#
+# The blob. GHCR answers 307 to a signed URL on another host; curl does not send
+# the Authorization header across hosts, and that URL needs none.
+#---------------------------------------------------------------------------#
+if [ -t 2 ]; then
+  printf ' %s\n' "$file" >&2
+fi
+max_size=$size
+if [ "$max_size" -eq 0 ]; then
+  max_size=1
+fi
+rc=0
+if [ -n "$AUTH" ]; then
+  # shellcheck disable=SC2086 # RETRY is several words on purpose
+  curl -q --fail --location --show-error "$PROGRESS" --proto "$PROTO" --proto-redir "$PROTO" \
+    --max-redirs 5 --max-filesize "$max_size" --connect-timeout 20 --speed-limit 1024 --speed-time 60 \
+    $RETRY \
+    --user-agent "pacman-oci/$PACMAN_OCI_VERSION" \
+    --header "Authorization: $AUTH" \
+    --output "$out" --url "$base/blobs/$digest" || rc=$?
+else
+  # shellcheck disable=SC2086 # RETRY is several words on purpose
+  curl -q --fail --location --show-error "$PROGRESS" --proto "$PROTO" --proto-redir "$PROTO" \
+    --max-redirs 5 --max-filesize "$max_size" --connect-timeout 20 --speed-limit 1024 --speed-time 60 \
+    $RETRY \
+    --user-agent "pacman-oci/$PACMAN_OCI_VERSION" \
+    --output "$out" --url "$base/blobs/$digest" || rc=$?
+fi
+if [ "$rc" -ne 0 ]; then
+  miss "could not read blob $digest for $file (curl $rc)"
+fi
+
+got_size=$(size_of "$out")
+if [ "$got_size" != "$size" ]; then
+  broken "$file from $host/$repo is $got_size bytes, the manifest says $size"
+fi
+got=$(sha256_of "$out")
+if [ "$got" != "$hex" ]; then
+  broken "$file from $host/$repo has sha256 $got, the manifest says $hex"
+fi
+debug "$file $digest $size bytes"
+exit 0

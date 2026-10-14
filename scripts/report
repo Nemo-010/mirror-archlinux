@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+#
+# Say what one sync run did, per target, and keep the two issues that do not
+# heal by themselves in step with it.
+#
+#   scripts/report PLAN STAGE PROMOTED
+#
+# PLAN and STAGE are the plan and stage outputs (STAGE may be missing when the
+# run stopped before it), PROMOTED a file of promote results, one line per
+# target: target status detail.
+#
+# Writes the table to $GITHUB_STEP_SUMMARY when set, otherwise to stdout.
+#
+# Issues (scripts/track-issue), only when TRACK_ISSUES=1:
+#   visibility-<target>  raised when the package reads only with the workflow's
+#                        token; cleared once a run reads it anonymously
+#   replaced-<target>    raised when a file's tag holds other bytes; cleared once
+#                        the target stages or is current again
+# A target that is held, behind or in error raises nothing here: a run that
+# fails once is ordinary, and scripts/check-staleness (watchdog.yml) raises
+# stale-<target> when the mirror has really stopped following upstream.
+#
+# Exit status: 0 no target is held, failed, replaced, private or in error (a
+# target behind upstream's own servers, or staged on a branch, is not a
+# failure); 1 at least one is, so the run shows red; 2 usage.
+set -euo pipefail
+SCRIPT_NAME=report
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+plan="${1:-}"
+stage="${2:-}"
+promoted="${3:-}"
+if [ -z "$plan" ] || [ -z "$stage" ] || [ -z "$promoted" ]; then
+  echo "usage: scripts/report PLAN STAGE PROMOTED" >&2
+  exit 2
+fi
+summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-pkgforge-dev/mirror-archlinux}/actions/runs/${GITHUB_RUN_ID:-0}"
+
+if [ ! -f "$plan/summary.tsv" ]; then
+  printf '### Sync\n\nThe plan did not finish, so nothing is known about any target. %s\n' "$run_url" >> "$summary"
+  exit 1
+fi
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+# target -> final state and why: promote's word wins over stage's over plan's
+tail -n +2 "$plan/summary.tsv" | cut -f 1,2,5 > "$work/states.tsv"
+if [ -f "$stage/summary.tsv" ]; then
+  tail -n +2 "$stage/summary.tsv" | cut -f 1,2,3 > "$work/stage.tsv"
+  awk -F '\t' -v OFS='\t' 'FILENAME == ARGV[1] { s[$1] = $2; w[$1] = $3; next } ($1 in s) { $2 = s[$1]; $3 = w[$1] } { print }' \
+    "$work/stage.tsv" "$work/states.tsv" > "$work/merged.tsv"
+  mv -f "$work/merged.tsv" "$work/states.tsv"
+fi
+if [ -s "$promoted" ]; then
+  awk -F '\t' -v OFS='\t' 'FILENAME == ARGV[1] { s[$1] = $2; w[$1] = $3; next } ($1 in s) && $2 == "staged" { $2 = s[$1]; $3 = w[$1] } { print }' \
+    "$promoted" "$work/states.tsv" > "$work/merged.tsv"
+  mv -f "$work/merged.tsv" "$work/states.tsv"
+fi
+
+{
+  printf '### Sync\n\n| target | state | what was measured |\n| --- | --- | --- |\n'
+  awk -F '\t' '{ gsub(/\|/, "\\|", $3); printf "| %s | %s | %s |\n", $1, $2, $3 }' "$work/states.tsv"
+  printf '\n'
+  for d in "$stage"/*/; do
+    d="${d%/}"
+    [ -d "$d" ] || continue
+    for f in failing replaced; do
+      if [ -s "$d/$f.tsv" ]; then
+        printf '<details><summary>%s: %s file(s)</summary>\n\n```\n' "$(basename "$d")" "$f"
+        sed -n 1,200p "$d/$f.tsv"
+        printf '```\n</details>\n\n'
+      fi
+    done
+  done
+} >> "$summary"
+
+# track KEY raise|clear TITLE BODY|NOTE
+track() {
+  [ "${TRACK_ISSUES:-0}" = 1 ] || return 0
+  local rc=0
+  if [ "$2" = raise ]; then
+    "$REPO_ROOT/scripts/track-issue" raise "$1" "$3" "$4" || rc=$?
+  else
+    "$REPO_ROOT/scripts/track-issue" clear "$1" "$4" || rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    warn "could not update the issue $1 (track-issue $rc)"
+  fi
+}
+
+bad=0
+while IFS=$'\t' read -r target state why; do
+  [ -n "$target" ] || continue
+  case "$state" in
+    held | error | replaced | private | failed) bad=1 ;;
+  esac
+  case "$state" in
+    private)
+      # shellcheck disable=SC2016 # Markdown backticks, not command substitution
+      {
+        printf 'The package behind `%s` was created private, and nothing can be promoted until it is public: consumers read it with no credential.\n\n' "$target"
+        printf 'GitHub offers no API for package visibility, so this takes one click: open the package settings, Danger Zone, Change visibility, Public.\n\n'
+        if [ -f "$stage/$target/settings-url" ]; then
+          printf '%s\n\n' "$(cat "$stage/$target/settings-url")"
+        fi
+        printf 'Everything is pushed and verified meanwhile; the next run promotes. Measured: %s\n\nRun: %s\n' "$why" "$run_url"
+      } > "$work/body.md"
+      track "visibility-$target" raise "$target: the package is private" "$work/body.md"
+      ;;
+    staged | promoted | current)
+      track "visibility-$target" clear "" "A run read \`$target\` anonymously: $run_url"
+      track "replaced-$target" clear "" "\`$target\` staged or was current in $run_url, so no tag holds other bytes for a file it names."
+      ;;
+  esac
+  if [ "$state" = replaced ]; then
+    # shellcheck disable=SC2016 # Markdown backticks, not command substitution
+    {
+      printf 'A file of `%s` changed its bytes upstream under the same name, or its tag already holds other bytes. A package tag is written once, so the target is held: the promoted database and older snapshots may name the bytes the tag holds now.\n\n' "$target"
+      printf 'Measured: %s\n\n' "$why"
+      if [ -f "$stage/$target/replaced.tsv" ]; then
+        printf '```\n'
+        sed -n 1,50p "$stage/$target/replaced.tsv"
+        printf '```\n\n'
+      fi
+      printf 'A person decides: wait for upstream to publish a new filename, or accept the new bytes under a new tag (HISTORY/design.md, write-once tags).\n\nRun: %s\n' "$run_url"
+    } > "$work/body.md"
+    track "replaced-$target" raise "$target: a package tag would have to change" "$work/body.md"
+  fi
+done < "$work/states.tsv"
+
+exit "$bad"
