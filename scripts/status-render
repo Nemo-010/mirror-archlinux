@@ -85,8 +85,9 @@ OTHER_DARK = "#6b6a65"
 STATE = {"good": "#0ca30c", "warning": "#fab219",
          "critical": "#d03b3b", "none": "#898781", "unknown": "#898781"}
 
-ARCH_ORDER = ["x86_64", "aarch64", "armv7h", "loong64", "riscv64"]
-REPO_ORDER = ["core", "extra", "multilib", "alarm", "aur"]
+ARCH_ORDER = ["x86_64", "aarch64", "armv7h", "loong64", "riscv64",
+              "powerpc64le", "powerpc64", "powerpc"]
+REPO_ORDER = ["core", "extra", "multilib", "alarm", "aur", "base", "base-any"]
 PATH_ORDER = ["official", "worker", "oci", "oci-serial"]
 PATH_LABEL = {"official": "official mirror", "worker": "Worker, native",
               "oci": "oci wrapper", "oci-serial": "oci wrapper, serial"}
