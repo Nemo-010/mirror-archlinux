@@ -430,6 +430,61 @@ db_check() {
   return 0
 }
 
+# keyring_files IMAGE PLATFORM DIR -> the pacman keyring files of IMAGE copied
+# into DIR. `create` and `cp` run nothing from the image, so no emulation is
+# needed. CONTAINER_RUNTIME names docker (default) or podman. Exit 1 with a
+# warning when the image cannot be read, so the caller decides what a target
+# without its trust root does.
+keyring_files() {
+  local image="$1" platform="$2" dir="$3" runtime="${CONTAINER_RUNTIME:-docker}"
+  local rc=0 cid="" log
+  log="$(mktemp)" || return 1
+  if ! command -v "$runtime" > /dev/null; then
+    warn "no $runtime on PATH, so the keyring files of $image cannot be read" \
+      "set CONTAINER_RUNTIME to a container runtime that can pull $image"
+    rm -f "$log"
+    return 1
+  fi
+  mkdir -p "$dir" || { rm -f "$log"; return 1; }
+  timeout --kill-after=30 600 "$runtime" pull --platform "$platform" "$image" > "$log" 2>&1 || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    cid="$(timeout 120 "$runtime" create --platform "$platform" "$image" true)" || rc=$?
+  fi
+  if [ "$rc" -eq 0 ]; then
+    timeout 120 "$runtime" cp "$cid:/usr/share/pacman/keyrings/." "$dir/" > "$log" 2>&1 || rc=$?
+    timeout 60 "$runtime" rm "$cid" > /dev/null || rc=$?
+    cid=""
+  fi
+  if [ -n "$cid" ]; then
+    timeout 60 "$runtime" rm "$cid" > /dev/null || log "could not remove container $cid"
+  fi
+  if [ "$rc" -ne 0 ]; then
+    warn "could not read the keyring files of $image (status $rc): $(tail -n 1 "$log")" \
+      "reproduce: $runtime pull --platform $platform $image && $runtime create --platform $platform $image true"
+    rm -f "$log"
+    return 1
+  fi
+  rm -f "$log"
+  return 0
+}
+
+# sig_check SIGNATURE DATA DIR -> 0 when gpgv accepts SIGNATURE for DATA with
+# the .gpg keyrings in DIR. Each keyring is its own --keyring, so a signature
+# of any key of any of them passes. Absolute paths: gpgv reads a relative
+# keyring name inside its own home.
+sig_check() {
+  local sig="$1" data="$2" dir="$3" f
+  local -a keys=()
+  command -v gpgv > /dev/null || return 1
+  for f in "$dir"/*.gpg; do
+    [ -f "$f" ] || continue
+    keys+=(--keyring "$f")
+  done
+  [ "${#keys[@]}" -gt 0 ] || return 1
+  gpgv --quiet "${keys[@]}" "$sig" "$data" || return 1
+  return 0
+}
+
 # behind A.tsv B.tsv -> "NEWER OLDER": how many packages of B were built
 # after, and before, the same package in A. B is behind A when OLDER > 0.
 # Measured on Arch's archived core.db, 2026-10-01 to 10-12: in every pair of

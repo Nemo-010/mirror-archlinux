@@ -5,7 +5,7 @@
 | suite | files | needs |
 | --- | --- | --- |
 | `static` | `tests/static/*.sh`: shellcheck, actionlint, py_compile and the policy checks | `shellcheck`, `actionlint`, `jq`; `python3` when there is python to compile; `git` for the file modes |
-| `unit` | `tests/unit/*.sh`: the wrapper and the scripts on fixed inputs, with no network | `curl`, `jq`; GNU tar for the database cases; `python3` and `git` for parts of `60-status.sh` |
+| `unit` | `tests/unit/*.sh`: the wrapper and the scripts on fixed inputs, with no network | `curl`, `jq`; GNU tar for the database cases; `python3` and `git` for parts of `60-status.sh`; `gpg`, `gpgv` and GNU tar for `70-plan.sh` |
 | `integration` | `tests/integration/*.sh`: a local registry and pacman in containers, oras on the host | docker or podman (`CONTAINER_RUNTIME`), curl, jq, tar, sha256sum, and network to pull the pinned images and oras |
 | `worker` | `tests/worker/*.sh`: the Worker under `node --test` | node 22 or newer, and `sh` |
 
@@ -29,6 +29,7 @@
 | `unit/40-lib.sh` | the decisions of the sync on fixed inputs |
 | `unit/45-dispatch-overdue.sh` | `scripts/dispatch-overdue` starts a workflow only when it is active and overdue |
 | `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all, and one upstream-only ppc target whose database is zstd at `base/$arch`; the synced badge, the times and the one script of the page, and the size table and badges |
+| `unit/70-plan.sh` | `scripts/plan` on a signed repository through the fake curl: a signature the keyring accepts leaves the target pending, and a signature of another key, a signature of the files database used for the database, and a database changed after it was signed refuse it |
 | `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural, `--sha256`, `--max-bytes`, `--header` and `--referer` checks, the HTML refusal, the retry backoff, the availability cache, the deadline, the dispatch of each client to its own program, `fetchers/self-check.sh`, `fetchers/install.sh --check`, the curl-impersonate asset choice, `fetchers/ci.sh` and `fetchers/drift.sh` |
 | `integration/10-pipeline.sh` | the whole mirror against its own registry and upstream |
 | `integration/20-client.sh` | the wrapper against its own registry, through faulty proxies |
@@ -90,7 +91,7 @@ TESTS_REQUIRE_TOOLS='shellcheck actionlint jq python3' tests/run.sh static
 ⚠ Other tests handle an absent tool in their own way:
 
 - `10-shellcheck.sh`, `20-actionlint.sh` and `worker/10-node.sh` fail when their tool is absent.
-- Parts of `30-wrapper-urls.sh` and `31-run-store.sh` (dash), `40-lib.sh` and `60-status.sh` (GNU tar, git, python3, zstd) and `40-executable-bits.sh` (git) print a plain `ok` line that says they skipped. `TESTS_REQUIRE_TOOLS` does not turn these into failures.
+- Parts of `30-wrapper-urls.sh` and `31-run-store.sh` (dash), `40-lib.sh` and `60-status.sh` (GNU tar, git, python3, zstd), `70-plan.sh` (gpg, gpgv, GNU tar) and `40-executable-bits.sh` (git) print a plain `ok` line that says they skipped. `TESTS_REQUIRE_TOOLS` does not turn these into failures.
 - So the `bash-gawk` and `busybox` unit legs pass with parts of `60-status.sh` skipped.
 
 ### Integration options
@@ -178,6 +179,8 @@ The tree itself is never changed. An integration fault runs with its own registr
 | test | fault | observed |
 | --- | --- | --- |
 | unit/40-lib | `decide_push` pushes over a tag that holds other bytes | not ok: `write-once: other bytes under this name are never overwritten` |
+| unit/70-plan | `sig_check` accepts any keyring | not ok: `plan: a signature of a key the keyring does not hold refuses the target`, `plan: the refusal names the file whose signature failed` |
+| unit/70-plan | plan uses the database without checking its signature | not ok: `plan: a signature of the files database does not pass for the database`, `plan: a database changed after it was signed is refused` |
 | integration/10-pipeline | `mirror-file` pushes over a tag that holds other bytes | not ok: `a file whose bytes changed under its own name holds the target` |
 | unit/40-lib | older and newer swapped in the behind rule | not ok: `core of 10-03 is not behind 10-02` |
 | integration/10-pipeline | plan takes a database behind the promoted one | not ok: `an older upstream database is refused as behind` |

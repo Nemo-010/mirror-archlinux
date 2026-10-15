@@ -608,7 +608,7 @@ EOF
   : > "$work/trickle.hits"
   python3 -I "$work/trickle.py" "$work/trickle.hits" > "$work/trickle.port" 2> "$work/trickle.err" &
   trickle_pid=$!
-  trap 'kill "$trickle_pid"; rm -rf "$work"' EXIT
+  trap 'kill "$trickle_pid" 2>/dev/null || true; rm -rf "$work"' EXIT
   port=""
   for _ in $(seq 1 50); do
     port="$(sed -n 1p "$work/trickle.port")"
@@ -619,7 +619,7 @@ EOF
   rc=0
   UPSTREAM_PROTO='=http,https' in_lib fetch_upstream "http://127.0.0.1:$port/big.db" "$work/trickle.out" 3 > /dev/null 2>&1 || rc=$?
   took=$((SECONDS - started))
-  kill "$trickle_pid"
+  kill "$trickle_pid" 2>/dev/null || true
   trap 'rm -rf "$work"' EXIT
   # The server ends by the signal (status 143), as it should.
   wait_rc=0
@@ -655,5 +655,63 @@ for want in 0 4 1; do
     "$want $([ "$want" = 0 ] && echo kept || echo removed)" "$rc $wrote" \
     "STUB_RC=$want bash -c '. scripts/lib.sh; MIRROR_FETCHER=$stub fetch_upstream https://example.invalid/x.db OUT'"
 done
+
+#---------------------------------------------------------------------------#
+# sig_check: gpgv against the .gpg keyrings in a directory
+#---------------------------------------------------------------------------#
+if ! command -v gpg > /dev/null || ! command -v gpgv > /dev/null; then
+  ok "skipped: sig_check, because gpg or gpgv is not on PATH"
+else
+  export GNUPGHOME="$work/gnupg"
+  mkdir -p "$GNUPGHOME"
+  chmod 700 "$GNUPGHOME"
+  gpg --batch --quiet --pinentry-mode loopback --passphrase '' \
+    --quick-gen-key 'Mirror Test One <one@mirror.test>' ed25519 sign 1d > /dev/null 2>&1
+  gpg --batch --quiet --pinentry-mode loopback --passphrase '' \
+    --quick-gen-key 'Mirror Test Two <two@mirror.test>' ed25519 sign 1d > /dev/null 2>&1
+  mkdir -p "$work/keys-one" "$work/keys-both" "$work/keys-empty"
+  gpg --batch --quiet --export 'one@mirror.test' > "$work/keys-one/one.gpg"
+  gpg --batch --quiet --export 'two@mirror.test' > "$work/keys-two.gpg.tmp"
+  cp "$work/keys-one/one.gpg" "$work/keys-both/one.gpg"
+  cp "$work/keys-two.gpg.tmp" "$work/keys-both/two.gpg"
+  printf 'a database\n' > "$work/sig.db"
+  printf 'tampered\n' > "$work/sig.db.bad"
+  gpg --batch --quiet --pinentry-mode loopback --passphrase '' -u 'one@mirror.test' \
+    --detach-sign -o "$work/sig.db.one.sig" "$work/sig.db"
+  gpg --batch --quiet --pinentry-mode loopback --passphrase '' -u 'two@mirror.test' \
+    --detach-sign -o "$work/sig.db.two.sig" "$work/sig.db"
+
+  sig_rc_want() {  # sig_rc_want WANT DESC SIG DATA KEYS
+    local want="$1" desc="$2" rc=0
+    shift 2
+    in_lib sig_check "$@" > /dev/null 2>&1 || rc=$?
+    check "$desc" "$want" "$rc" "bash -c '. scripts/lib.sh; sig_check SIG DATA KEYRING-DIR'"
+  }
+  sig_rc_want 0 "sig_check: a signature of a key in the directory passes" \
+    "$work/sig.db.one.sig" "$work/sig.db" "$work/keys-one"
+  sig_rc_want 1 "sig_check: a signature of a key that is not in the directory is refused" \
+    "$work/sig.db.two.sig" "$work/sig.db" "$work/keys-one"
+  sig_rc_want 0 "sig_check: one of two keyrings is enough" \
+    "$work/sig.db.one.sig" "$work/sig.db" "$work/keys-both"
+  sig_rc_want 1 "sig_check: a changed file is refused" \
+    "$work/sig.db.one.sig" "$work/sig.db.bad" "$work/keys-one"
+  sig_rc_want 1 "sig_check: a directory with no .gpg keyring is refused" \
+    "$work/sig.db.one.sig" "$work/sig.db" "$work/keys-empty"
+fi
+
+#---------------------------------------------------------------------------#
+# keyring_files: no container runtime is a refusal, not a crash
+#---------------------------------------------------------------------------#
+rc=0
+CONTAINER_RUNTIME="$work/no-such-runtime" bash -c '. "$1"; shift; keyring_files "$@"' _ "$LIB" \
+  ghcr.io/example.invalid/archlinux:ppc64le linux/ppc64le "$work/kf" > "$work/kf.out" 2>&1 || rc=$?
+check "keyring_files: no container runtime refuses, with status 1" 1 "$rc" \
+  "CONTAINER_RUNTIME=missing bash -c '. scripts/lib.sh; keyring_files IMAGE PLATFORM DIR'"
+if grep -q 'no-such-runtime' "$work/kf.out"; then
+  ok "keyring_files: the refusal names the runtime it did not find"
+else
+  fail "keyring_files: the refusal names the runtime it did not find" "$(sed -n 1,3p "$work/kf.out")" \
+    "CONTAINER_RUNTIME=missing bash -c '. scripts/lib.sh; keyring_files IMAGE PLATFORM DIR'"
+fi
 
 summary

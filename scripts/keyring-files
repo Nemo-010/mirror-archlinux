@@ -33,29 +33,13 @@ RUNTIME="${CONTAINER_RUNTIME:-docker}"
 need "$RUNTIME" timeout sha256sum
 
 work="$(mktemp -d)"
-cid=""
-cleanup() {
-  if [ -n "$cid" ]; then
-    timeout 60 "$RUNTIME" rm "$cid" > /dev/null || log "could not remove container $cid"
-  fi
-  rm -rf "$work"
-}
-trap cleanup EXIT
+trap 'rm -rf "$work"' EXIT
 
 # files IMAGE PLATFORM DIR: the keyring files of IMAGE into DIR
 files() {
-  local rc=0
-  mkdir -p "$3"
-  timeout --kill-after=30 600 "$RUNTIME" pull --platform "$2" "$1" > "$work/pull.log" 2>&1 || rc=$?
-  [ "$rc" -eq 0 ] || die "could not pull $1 for $2 (status $rc): $(tail -n 1 "$work/pull.log")" \
-    "reproduce: $RUNTIME pull --platform $2 $1"
-  cid="$(timeout 120 "$RUNTIME" create --platform "$2" "$1" true)" ||
-    die "could not create a container from $1" "reproduce: $RUNTIME create --platform $2 $1 true"
-  timeout 120 "$RUNTIME" cp "$cid:/usr/share/pacman/keyrings/." "$3/" > "$work/cp.log" 2>&1 || rc=$?
-  timeout 60 "$RUNTIME" rm "$cid" > /dev/null || rc=$?
-  cid=""
-  [ "$rc" -eq 0 ] || die "could not copy /usr/share/pacman/keyrings out of $1 (status $rc)" \
-    "reproduce: $RUNTIME create --platform $2 $1 true, then $RUNTIME cp ID:/usr/share/pacman/keyrings/. DIR"
+  keyring_files "$1" "$2" "$3" ||
+    die "could not read the keyring files of $1 for $2" \
+      "set CONTAINER_RUNTIME to a container runtime that can pull $1"
 }
 
 : > "$work/images.tsv"

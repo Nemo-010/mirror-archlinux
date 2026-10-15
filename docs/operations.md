@@ -143,6 +143,10 @@ A sync run can be run again from its page. The two choices do not do the same th
 
 The plan job reads every target's databases from upstream, one target after another, in one job of 30 minutes. `scripts/plan` ends its upstream reads within `PLAN_BUDGET` seconds (1200). Each target gets what is left of the budget, divided by the targets not yet read. A target whose upstream does not answer in time is in error for that run, and its row in the run's table names `PLAN_BUDGET`. The next run reads it again. A target that stays in error raises `stale-<target>` after the tolerance.
 
+### The plan's trust root
+
+With `db_signed = yes` (the ArchPOWER targets), `scripts/plan` checks `<repo>.db.sig` and `<repo>.files.sig` with `gpgv` against the keyring files of the target's `keyring_image` before it uses the database. It copies them out of the image with `create` and `cp` only, so nothing in it runs. `CONTAINER_RUNTIME` names docker (default) or podman; without one those targets are in error, with that reason. The files are cached under `OUT/keyrings/<id>` for the run, so one image is read once. A signature that does not verify goes to error, and the log names the file; plan tries the next `db_server`, like a malformed database. `PLAN_KEYRING_DIR` names a directory of keyring files in place of the image, for a runner that has none.
+
 ## Renovate
 
 `.github/renovate.json` sets the update policy.
