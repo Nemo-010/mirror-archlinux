@@ -3,6 +3,8 @@
 Arch Linux and three of its ports, stored on GHCR and checked by pacman before each snapshot is published.
 
 [![all](https://pkgforge-dev.github.io/mirror-archlinux/badges/all.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
+[![synced](https://pkgforge-dev.github.io/mirror-archlinux/badges/synced.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
+[![size](https://pkgforge-dev.github.io/mirror-archlinux/badges/size.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
 [![x86_64](https://pkgforge-dev.github.io/mirror-archlinux/badges/x86_64.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
 [![aarch64](https://pkgforge-dev.github.io/mirror-archlinux/badges/aarch64.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
 [![armv7h](https://pkgforge-dev.github.io/mirror-archlinux/badges/armv7h.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
@@ -14,7 +16,7 @@ Arch Linux and three of its ports, stored on GHCR and checked by pacman before e
 
 ![Snapshot age per target, against the sync interval](https://pkgforge-dev.github.io/mirror-archlinux/charts/freshness.svg)
 
-The dashboard is at <https://pkgforge-dev.github.io/mirror-archlinux/>. It shows every target, the history of the last 30 days and the daily speed measurement.
+The dashboard is at <https://pkgforge-dev.github.io/mirror-archlinux/>. It shows every target, the size per architecture and repository, the history of the last 30 days and the daily speed measurement. The `synced` badge says how long ago the mirror last changed, counted to the last status run.
 
 ## Use the mirror
 

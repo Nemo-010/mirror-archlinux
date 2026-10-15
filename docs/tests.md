@@ -28,7 +28,7 @@
 | `unit/32-prefetch-plan.sh` | the argument rewrite, the print lines, the signatures written from `%g`, the size of a held `.part` |
 | `unit/40-lib.sh` | the decisions of the sync on fixed inputs |
 | `unit/45-dispatch-overdue.sh` | `scripts/dispatch-overdue` starts a workflow only when it is active and overdue |
-| `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all |
+| `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all; the synced badge, the times and the one script of the page, and the size table and badges |
 | `integration/10-pipeline.sh` | the whole mirror against its own registry and upstream |
 | `integration/20-client.sh` | the wrapper against its own registry, through faulty proxies |
 | `worker/10-node.sh` | `node --test 'worker/test/*.test.js'` |
@@ -259,6 +259,32 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/60-status | `BENCH_MAX_AGE` 100 days | 4 not ok, among them `site7: a bench older than 2 days gives the speed badge the warning colour` |
 | unit/60-status | a group with no snapshot is `not mirrored` also when its registry did not answer | 6 not ok, among them `site6: badge all does not say not mirrored` |
 | unit/60-status | `check-staleness` of before the enabled date | not ok: `check-staleness: no latest, added disabled 43 days ago, enabled 1 day ago: new` |
+| unit/60-status | `SYNCED_GOOD` 4 h | not ok: `synced-5h: 5 h ago is green` |
+| unit/60-status | `SYNCED_LATE` 48 h | not ok: `synced-30h: 30 h ago is 1 d ago, red` |
+| unit/60-status | `fmt_ago` says `30 min`, with no `ago` | not ok: `synced-30m: 30 min ago is green` |
+| unit/60-status | `fmt_ago` rounds hours to the nearest | not ok: `synced-12h: 12 h 59 min ago rounds down to 12 h, yellow`, `site5: badge synced carries its text: synced \| 3 h ago` |
+| unit/60-status | `fmt_ago` divides days by 0 | not ok: `synced-30h: status-render exits 0`, `synced-30h: 30 h ago is 1 d ago, red` |
+| unit/60-status | `status-render` reads `created` only, never `fetched` | 5 not ok, among them `synced-fetched: a status.json with no created time falls back to the newest fetched time, 3 h ago` |
+| unit/60-status | `status-collect` takes `last_synced` from `created` only | not ok: `no latest names a created time: last_synced falls back to the newest fetched time` |
+| unit/60-status | `status-collect` takes the oldest time for `last_synced` | 14 not ok, among them `summary: last_synced is the newest of each target's created time, or its fetched time` and `site: badge synced carries its text: synced \| 2 h ago` |
+| unit/60-status | `status-collect` keeps the fraction of `created` | 19 not ok, among them `mirror.created is latest's org.opencontainers.image.created, the fraction cut; null when latest names none` |
+| unit/60-status | `mirror.created` is `""` in place of `null` | 3 not ok, among them the `mirror.created` test and `summary: no registry read: last_synced is unknown` |
+| unit/60-status | `last_synced` is `""` when no time is known | not ok: `summary: no registry read: last_synced is unknown` |
+| unit/60-status | `last_synced` is a jq error when no manifest names a created time | 5 not ok, among them `no latest names a created time: the collect measures and exits 0` |
+| unit/60-status | `<time>` text with no ` UTC` | 24 not ok, among them `<site>: every <time> has a datetime ending in Z and shows that time as UTC text` in each of the six sites |
+| unit/60-status | a `datetime` with no `Z` | 6 not ok: `<site>: every <time> has a datetime ending in Z and shows that time as UTC text` |
+| unit/60-status | the first history point as plain text | 6 not ok, among them `site: index.html shows no time outside a <time> element` |
+| unit/60-status | a second `<script>` | 6 not ok: `<site>: index.html has one script, inline, and no other` |
+| unit/60-status | the script with no `timeZoneName` | 6 not ok: `<site>: the script sets each <time> title to the local time, its time zone and its age, after load` |
+| unit/60-status | `<body onload="0">` | 6 not ok: `<site>: index.html has no event handler attribute and no javascript: URL` |
+| unit/60-status | rows of the size table with no `data-target` | 6 not ok: `<site>: the size table has a row per architecture, per repository and one total row` |
+| unit/60-status | an architecture row that leaves out its last repository | 6 not ok: `<site>: size table: each architecture row is the sum of its targets` |
+| unit/60-status | a total row that leaves out the first target | 6 not ok: `<site>: size table: the total row is the sum of every target` |
+| unit/60-status | a files cell that shows the bytes | 6 not ok: `<site>: size table: each cell shows its value in GiB or in files` |
+| unit/60-status | a target with no `latest` counts as not read, not as 0 | 21 not ok, among them `site: badge size does not say measured` and `site: size table: each repository row holds its target's mirror and upstream bytes and files` |
+| unit/60-status | no size badge for the last architecture | 24 not ok, among them `site: a size badge for each architecture (aarch64 loong64 x86_64) parses as XML` |
+| unit/60-status | the size badges of the architectures with no `</svg>` | 31 not ok, among them `site: a size badge for each architecture (aarch64 loong64 x86_64) parses as XML` |
+| unit/60-status | the group labels of `charts/size.svg` with no sum | 5 not ok: `<site>: chart size shows ... x86_64 · 1.6 KiB of 2.4 KiB, 2 of 3 measured ...` |
 
 ### worker
 

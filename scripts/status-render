@@ -6,18 +6,26 @@
 #
 # IN holds status.json (required), history.jsonl and bench.json (optional).
 # OUT_SITE gets:
-#   index.html                   one static page: inline CSS, light and dark,
-#                                no JavaScript
+#   index.html                   one static page: inline CSS, light and dark.
+#                                Each time is UTC text in a <time> element.
+#                                One inline script puts the viewer's local
+#                                time and its age in the title of each one
 #   badges/<target>.svg          coverage and snapshot age of one target
 #   badges/<arch>.svg            the same over the targets of one architecture
 #   badges/all.svg               the same over every target
+#   badges/synced.svg            the time since the mirror last changed: green
+#                                under 6 h, yellow under 24 h, red after
+#   badges/size.svg              the bytes the mirror's databases name
+#   badges/size-<arch>.svg       the same over one architecture
 #   badges/speed.svg             pacman's time through the oci wrapper and
 #                                through the official mirror, from bench.json
 #   charts/coverage.svg          share of upstream files in the mirror, per
 #                                target, grouped by architecture
 #   charts/freshness.svg         snapshot age per target, against the sync
 #                                interval
-#   charts/size.svg              GiB per target, in the mirror and upstream only
+#   charts/size.svg              GiB per target, in the mirror and upstream
+#                                only, grouped by architecture; each group
+#                                label holds the sum of its architecture
 #   charts/history-coverage.svg  coverage per architecture, last 30 days
 #   charts/history-age.svg       oldest snapshot age per architecture, last 30
 #                                days
@@ -32,6 +40,10 @@
 # 3 measured"). A group whose registry did not answer is "unknown", never
 # "not mirrored". A bench older than 2 days shows its age in the warning
 # colour.
+#
+# An age counts to the measurement time, generated_epoch, not to the time a
+# reader opens the page. A badge or a chart is an image, and an image runs
+# no script, so it keeps its UTC time or its age as rendered.
 #
 # Every SVG has a title, axis labels, a legend and its own style with a dark
 # variant. Colours are the validated colour-blind safe categorical slots, and
@@ -149,6 +161,36 @@ def fmt_gib(b):
     return "%.0f" % g
 
 
+def fmt_size(b):
+    """Bytes in binary units, 3 digits at most: 812 B, 2.4 KiB, 61 GiB, 1.2 TiB."""
+    if b is None:
+        return "unknown"
+    v = float(b)
+    unit = "B"
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB", "PiB"):
+        if v < 1023.5 or unit == "PiB":
+            break
+        v /= 1024
+    if unit == "B":
+        return "%d B" % round(v)
+    return ("%.1f %s" if v < 9.95 else "%.0f %s") % (v, unit)
+
+
+def fmt_ago(s):
+    """An age as the synced badge says it, rounded down: just now, 5 min
+    ago, 3 h ago, 2 d ago."""
+    if s is None:
+        return "unknown"
+    s = max(s, 0)
+    if s < 60:
+        return "just now"
+    if s < 3600:
+        return "%d min ago" % (s // 60)
+    if s < 86400:
+        return "%d h ago" % (s // 3600)
+    return "%d d ago" % (s // 86400)
+
+
 def fmt_secs(s):
     if s is None:
         return "-"
@@ -188,6 +230,21 @@ def parse_time(s):
     except ValueError:
         return None
     return d.replace(tzinfo=datetime.timezone.utc).timestamp()
+
+
+def time_html(epoch):
+    """A time on the page: UTC text in a <time> element, or "-". The inline
+    script of the page gives each <time> the viewer's local time as its
+    title."""
+    if not num(epoch):
+        return "-"
+    d = utc(epoch)
+    return '<time datetime="%s">%s UTC</time>' % (d.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                                  d.strftime("%Y-%m-%d %H:%M"))
+
+
+def time_iso(iso):
+    return time_html(parse_time(iso))
 
 
 def median(values):
@@ -377,6 +434,70 @@ def scope(targets, lead=", in"):
     repositories': a sum over part of the targets says so."""
     k, n = len(measured(targets)), len(targets)
     return "" if k == n else "%s %d of %d repositories" % (lead, k, n)
+
+
+# The synced badge is green under SYNCED_GOOD, yellow under SYNCED_LATE,
+# and red after.
+SYNCED_GOOD = 6 * 3600
+SYNCED_LATE = 24 * 3600
+
+
+def target_synced(t):
+    """When the latest of this target last changed: the manifest's created
+    time, or its fetched time when the manifest names no created time."""
+    m = t.get("mirror") or {}
+    for k in ("created", "fetched"):
+        when = parse_time(m.get(k))
+        if when is not None:
+            return when
+    return None
+
+
+def last_synced(status, targets):
+    """The epoch at which the mirror last changed, or None. summary.last_synced
+    first. A status.json of before that field names none: then the newest of
+    the targets, by the same rule."""
+    t = parse_time((status.get("summary") or {}).get("last_synced"))
+    if t is not None:
+        return t
+    times = [x for x in (target_synced(t) for t in targets) if x is not None]
+    return max(times) if times else None
+
+
+def synced_level(age):
+    if age is None:
+        return "unknown"
+    if age < SYNCED_GOOD:
+        return "good"
+    if age < SYNCED_LATE:
+        return "warning"
+    return "critical"
+
+
+def side_size(t, side):
+    """(files, bytes) of one target on SIDE, or None when that side was not
+    read. mirror: what the database of the latest snapshot names; a target
+    with no latest holds 0. upstream: upstream's database in this run."""
+    if side == "mirror":
+        m = t.get("mirror") or {}
+        if m.get("state") == "absent":
+            return 0, 0
+        if m.get("state") == "promoted" and num(m.get("files")) and num(m.get("bytes")):
+            return m["files"], m["bytes"]
+        return None
+    u = t.get("upstream") or {}
+    if u.get("ok") is True and num(u.get("files")) and num(u.get("bytes")):
+        return u["files"], u["bytes"]
+    return None
+
+
+def size_sum(targets, side):
+    """(files, bytes, read) over the targets read on SIDE. files and bytes are
+    None when no target was read on that side, never 0."""
+    got = [x for x in (side_size(t, side) for t in targets) if x is not None]
+    if not got:
+        return None, None, 0
+    return sum(f for f, _ in got), sum(b for _, b in got), len(got)
 
 
 # bench.json comes from a daily run. Older than this, it is shown with its age.
@@ -763,7 +884,8 @@ def chart_size(ctx, w):
     s = ctx["status"]["summary"]
     svg = Svg("Size by repository",
               "Compressed package bytes per repository: in the mirror, and upstream "
-              "only.", w)
+              "only, grouped by architecture. Each group label holds the sum of its "
+              "architecture.", w)
     if s.get("mirrored_bytes") is None:
         head = "unknown"
         cap = "No repository could be read on both sides in this run, so the size is not known."
@@ -780,7 +902,17 @@ def chart_size(ctx, w):
     ticks, top = nice_ticks(vmax, 5 if w >= 600 else 3)
     rows = []
     for a, ts in groups:
-        rows.append(Row("group", a))
+        # The sum of the bars below: the upstream bytes the mirror holds, of
+        # upstream's bytes, over the targets read on both sides.
+        done = [t for t in ts if (t.get("coverage") or {}).get("of_bytes") is not None]
+        if not done:
+            rows.append(Row("group", "%s · not measured" % a))
+        else:
+            label = "%s · %s of %s" % (a, fmt_size(sum(t["coverage"].get("bytes") or 0 for t in done)),
+                                       fmt_size(sum(t["coverage"]["of_bytes"] for t in done)))
+            if len(done) < len(ts):
+                label += ", %d of %d measured" % (len(done), len(ts))
+            rows.append(Row("group", label))
         for t in ts:
             c = t.get("coverage")
             if not c or c.get("of_bytes") is None:
@@ -1185,6 +1317,28 @@ def group_badge(label, targets, interval, tolerance, count=False):
     return badge(label, " · ".join(parts), worst)
 
 
+def synced_badge(when, now):
+    """The time since the mirror last changed, counted to this measurement."""
+    if when is None or not now:
+        return badge("synced", "unknown", "unknown")
+    age = max(now - when, 0)
+    return badge("synced", fmt_ago(age), synced_level(age))
+
+
+def size_badge(label, targets):
+    """The bytes the mirror's databases name, over a group of targets. A part
+    never reads as the whole: the badge says how many targets it counts."""
+    _, b, read = size_sum(targets, "mirror")
+    if not [t for t in targets if (t.get("mirror") or {}).get("state") == "promoted"]:
+        if mirror_unread(targets):
+            return badge(label, "unknown", "unknown")
+        return badge(label, "not mirrored", "none")
+    msg = fmt_size(b)
+    if read < len(targets):
+        msg += " · %d of %d measured" % (read, len(targets))
+    return badge(label, msg, "info")
+
+
 def speed_badge(bench, now):
     if not bench:
         return badge("pacman speed", "no data", "none")
@@ -1268,8 +1422,28 @@ code{background:var(--code);padding:1px 5px;border-radius:5px}
 pre{background:var(--code);padding:14px 16px;border-radius:12px;overflow-x:auto;margin:0}
 pre code{background:none;padding:0}
 .missing{white-space:normal;color:var(--ink2);font-size:12px;max-width:60ch;margin-top:4px}
+.sizes{max-width:860px}
+.size tbody th{color:var(--ink);font-weight:620}
+.size tr.arch>*{background:var(--page);font-weight:620}
+.size td.repo{padding-left:28px}
+.size tfoot>tr>*{font-weight:650;color:var(--ink);border-top:2px solid var(--line);border-bottom:0}
+time[title]{cursor:help;text-decoration:underline dotted;text-decoration-color:var(--muted);
+text-underline-offset:2px}
 footer{margin-top:48px;color:var(--muted);font-size:13px}
 """.replace("FONT", FONT).replace("MONO", MONO)
+
+# The one script of the page. It runs after load and changes no text: it
+# gives each <time> a title with the viewer's local time, its time zone and
+# its age. With no script, the page reads the same, in UTC.
+PAGE_SCRIPT = """addEventListener("load", function () {
+  var f = {year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short"};
+  document.querySelectorAll("time[datetime]").forEach(function (e) {
+    var t = new Date(e.getAttribute("datetime")), s = (Date.now() - t) / 1000;
+    if (isNaN(s)) return;
+    e.title = t.toLocaleString(undefined, f) + ", " + (s < 60 ? "just now" : s < 3600 ? Math.floor(s / 60) + " min ago"
+      : s < 86400 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago");
+  });
+});"""
 
 
 def state_cell(level, word):
@@ -1285,6 +1459,46 @@ def table(head, rows, nums=()):
     return "<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>" % (h, body)
 
 
+def size_table(ctx):
+    """One row per architecture with its sums, its repositories under it, and
+    a total row. Each number cell holds its exact value in data-bytes or
+    data-files, empty when that side was not read."""
+    targets = ctx["targets"]
+
+    def cells(got):
+        f, b = got if got is not None else (None, None)
+        return ('<td class="n" data-bytes="%s">%s</td><td class="n" data-files="%s">%s</td>'
+                % ("" if b is None else int(b), esc(fmt_gib(b)), "" if f is None else int(f), esc(fmt_int(f))))
+
+    def sums(ts):
+        out = ""
+        for side in ("mirror", "upstream"):
+            f, b, _ = size_sum(ts, side)
+            out += cells(None if b is None else (f, b))
+        return out
+
+    body = []
+    for a, ts in grouped(targets, ctx["order"]):
+        body.append('<tr class="arch" data-arch="%s"><th scope="row">%s</th>%s</tr>' % (esc(a), esc(a), sums(ts)))
+        for t in ts:
+            body.append('<tr data-target="%s"><td class="repo">%s</td>%s%s</tr>'
+                        % (esc(t["target"]), esc(t.get("repo")), cells(side_size(t, "mirror")),
+                           cells(side_size(t, "upstream"))))
+    head = "".join('<th class="n">%s</th>' % h for h in
+                   ("mirror GiB", "mirror files", "upstream GiB", "upstream files"))
+    html_ = ('<table class="size"><thead><tr><th>repository</th>%s</tr></thead>'
+             '<tbody>%s</tbody><tfoot><tr class="total"><th scope="row">all architectures</th>%s</tr></tfoot></table>'
+             % (head, "".join(body), sums(targets)))
+    n = len(targets)
+    reads = [(side, size_sum(targets, side)[2]) for side in ("mirror", "upstream")]
+    part = ["%s in %d of %d" % ("the mirror" if side == "mirror" else "upstream", k, n) for side, k in reads if k < n]
+    note = ""
+    if part:
+        note = ("<p>A sum counts only the repositories read on that side: %s. A cell with - was not read.</p>"
+                % esc(" and ".join(part)))
+    return html_, note
+
+
 def page(ctx, charts, badges):
     status, targets = ctx["status"], ctx["targets"]
     interval, tolerance, bench = ctx["interval"], ctx["tolerance"], ctx["bench"]
@@ -1296,9 +1510,17 @@ def page(ctx, charts, badges):
     ns = status.get("namespace") or ""
     registry = status.get("registry") or "ghcr.io"
 
-    def tile(k, v, sub="", raw=False):
+    def tile(k, v, sub="", raw=False, sub_html=None):
         return ('<div class="tile"><div class="k">%s</div><div class="v">%s</div>'
-                '<div class="s">%s</div></div>' % (esc(k), v if raw else esc(v), esc(sub)))
+                '<div class="s">%s</div></div>' % (esc(k), v if raw else esc(v),
+                                                   esc(sub) if sub_html is None else sub_html))
+
+    synced = ctx["synced"]
+    if synced is not None and ctx["now"]:
+        synced_text = ("The mirror last changed at %s, so the synced badge says %s."
+                       % (time_html(synced), esc(fmt_ago(ctx["now"] - synced))))
+    else:
+        synced_text = "No snapshot names when it was made, so the synced badge says unknown."
 
     oldest = s.get("oldest_age_seconds")
     if wk.get("ok") is True:
@@ -1314,13 +1536,15 @@ def page(ctx, charts, badges):
     totals = bench_totals(bench) if bench else {}
     if totals.get("oci") is not None:
         old = bench_old(bench, ctx["now"])
-        when = "measured %s" % str(bench.get("date", "?"))[:10]
-        sub = "official mirror %s; %s" % (fmt_secs(totals.get("official")), when)
+        when = parse_time(bench.get("date"))
+        sub = "official mirror %s; measured %s" % (
+            esc(fmt_secs(totals.get("official"))),
+            time_html(when) if when is not None else esc(str(bench.get("date", "?"))[:10]))
         if old:
             last = tile("pacman, oci wrapper", state_cell("warning", fmt_secs(totals["oci"])),
-                        "%s, %s" % (sub, old), raw=True)
+                        raw=True, sub_html="%s, %s" % (sub, esc(old)))
         else:
-            last = tile("pacman, oci wrapper", fmt_secs(totals["oci"]), sub)
+            last = tile("pacman, oci wrapper", fmt_secs(totals["oci"]), sub_html=sub)
     else:
         last = tile("GHCR manifest", ghcr_ms, "median, read with no credential")
 
@@ -1389,14 +1613,14 @@ def page(ctx, charts, badges):
         size_rows.append([esc(t["target"]), esc(fmt_gib(c.get("bytes"))), esc(fmt_gib(c.get("of_bytes"))),
                           esc(fmt_pct(c.get("ratio_bytes")))])
         fresh_rows.append([esc(t["target"]), state_cell(lvl, word),
-                           esc(fmt_time((t.get("mirror") or {}).get("fetched"))),
+                           time_iso((t.get("mirror") or {}).get("fetched")), time_html(target_synced(t)),
                            esc(fmt_age(t.get("age_seconds"))), esc(fmt_age(t.get("lag_seconds")))])
     hist_rows = []
     for a in ctx["hist_order"]:
         pts = ctx["series"][a]
         covs = [p for p in pts if p[1] is not None]
         ages = [p[2] for p in pts if p[2] is not None]
-        hist_rows.append([esc(a), esc(utc(pts[0][0]).strftime("%Y-%m-%d %H:%M")),
+        hist_rows.append([esc(a), time_html(pts[0][0]),
                           esc(fmt_pct(covs[0][1]) if covs else "-"), esc(fmt_pct(covs[-1][1]) if covs else "-"),
                           esc(fmt_age(max(ages)) if ages else "-"), esc(fmt_int(len(pts)))])
     hist_table = table(["architecture", "first point", "coverage then", "coverage now",
@@ -1418,7 +1642,7 @@ def page(ctx, charts, badges):
             else "Coverage by repository: not known in this run.",
             table(["repository", "in the mirror", "upstream", "share", "missing"], cov_rows, (1, 2, 3, 4))),
         fig("freshness", "Snapshot age per repository, against the sync interval.",
-            table(["repository", "state", "fetched, UTC", "age", "lag"], fresh_rows, (3, 4))),
+            table(["repository", "state", "fetched", "synced", "age", "lag"], fresh_rows, (4, 5))),
         fig("history-coverage", "Coverage per architecture over the last 30 days.", hist_table),
         fig("history-age", "Oldest snapshot age per architecture over the last 30 days.", hist_table),
         fig("size", ("Size by repository: %s GiB of %s GiB%s are in the mirror."
@@ -1447,17 +1671,20 @@ def page(ctx, charts, badges):
             p = (t.get("worker") or {}).get(key)
             if p:
                 probes.append("%s %s%s" % (key, p.get("code"), " failed" if p.get("ok") is False else ""))
+        t_synced = target_synced(t)
         repo_rows.append([
             "<code>%s</code>" % esc(t["target"]), state_cell(lvl, word),
             esc(fmt_pct(c.get("ratio_files"))), esc(fmt_int(c.get("files"))), esc(fmt_int(c.get("of_files"))),
             miss, esc(fmt_gib(c.get("of_bytes"))), esc(fmt_age(t.get("age_seconds"))),
-            esc(fmt_age(t.get("lag_seconds"))), esc(fmt_time((t.get("mirror") or {}).get("fetched"))),
+            esc(fmt_ago(ctx["now"] - t_synced) if t_synced is not None and ctx["now"] else "-"),
+            esc(fmt_age(t.get("lag_seconds"))), time_iso((t.get("mirror") or {}).get("fetched")),
             esc(u.get("server") or u.get("error") or "-"), esc(", ".join(probes) or "-"),
             '<img src="badges/%s.svg" alt="%s badge" height="20">' % (esc(t["target"]), esc(t["target"])),
         ])
     repos = table(["repository", "state", "coverage", "files", "upstream", "missing", "GiB", "age",
-                   "lag", "fetched, UTC", "upstream server", "Worker", "badge"],
-                  repo_rows, (2, 3, 4, 5, 6, 7, 8))
+                   "synced", "lag", "fetched", "upstream server", "Worker", "badge"],
+                  repo_rows, (2, 3, 4, 5, 6, 7, 8, 9))
+    sizes = size_table(ctx)
 
     probe_rows = []
     for t in targets:
@@ -1510,9 +1737,9 @@ def page(ctx, charts, badges):
 <div>
 <h1>mirror-archlinux status</h1>
 <p class="lede">Arch Linux repositories for %(narch)d architectures, mirrored to GitHub Container Registry and served to pacman.</p>
-<p class="meta">Measured %(gen)s. Source: <a href="%(source)s">%(source_text)s</a>.</p>
+<p class="meta">Measured %(gen)s. %(synced)s Source: <a href="%(source)s">%(source_text)s</a>.</p>
 </div>
-<div class="badges"><img src="badges/all.svg" alt="all repositories badge" height="20"><img src="badges/speed.svg" alt="pacman speed badge" height="20"></div>
+<div class="badges"><img src="badges/all.svg" alt="all repositories badge" height="20"><img src="badges/synced.svg" alt="synced badge" height="20"><img src="badges/size.svg" alt="size badge" height="20"><img src="badges/speed.svg" alt="pacman speed badge" height="20"></div>
 </header>
 <section class="hero" aria-label="Summary">
 <div>
@@ -1524,25 +1751,35 @@ def page(ctx, charts, badges):
 %(use)s
 <h2>Charts</h2>
 <div class="charts">%(figs)s</div>
+<h2>Size by architecture</h2>
+<p>Mirror counts the files that the database of each latest snapshot names. A repository with no snapshot holds 0. Upstream counts the files of upstream's database in this run. The size chart counts only the upstream files that the mirror holds.</p>
+%(size_note)s<div class="scroll sizes">%(sizes)s</div>
 <h2>Repositories</h2>
 <div class="scroll">%(repos)s</div>
 <h2>Worker probes</h2>
 <p>Each probe is one GET with no redirect followed. A repository with a snapshot must answer 302 to <code>https://*.githubusercontent.com</code>. A repository with no snapshot must answer 404. %(down)s</p>
 <div class="scroll">%(probes)s</div>
 <h2>Badges</h2>
+<p>The status workflow writes each badge when it measures: each hour, and after each sync. An age in a badge counts to that measurement, not to now. The synced badge is green under %(good)d h, yellow under %(late)d h, and red after. A badge is an image and runs no script, so it shows its time in UTC or as an age.</p>
 <div class="scroll">%(badges)s</div>
 <footer>
-<p>Coverage counts an upstream file when the mirror's database names the same file name with the same sha256. Age is the time since the snapshot was fetched from upstream. Lag is the newest upstream build date minus the newest build date in the mirror. A snapshot that matches upstream is current at any age.</p>
+<p>Coverage counts an upstream file when the mirror's database names the same file name with the same sha256. Age is the time since the snapshot was fetched from upstream. Synced is the time since the latest snapshot was made: its manifest's created time, else its fetched time. Lag is the newest upstream build date minus the newest build date in the mirror. A snapshot that matches upstream is current at any age.</p>
+<p>Each time on this page is in UTC. With JavaScript on, hold the pointer on a time to see it in your time zone, with its age.</p>
 <p>Data: <a href="status.json">status.json</a>, <a href="history.json">history.json</a>, <a href="bench.json">bench.json</a>. Written by <code>scripts/status-collect</code> and <code>scripts/status-render</code>.</p>
 </footer>
 </div>
+<script>
+%(script)s
+</script>
 </body>
 </html>
 """ % {
-        "css": PAGE_CSS, "gen": esc(fmt_time(status.get("generated")) + " UTC"),
+        "css": PAGE_CSS, "script": PAGE_SCRIPT,
+        "gen": time_html(ctx["now"]) if ctx["now"] else esc(fmt_time(status.get("generated")) + " UTC"),
+        "synced": synced_text, "good": SYNCED_GOOD // 3600, "late": SYNCED_LATE // 3600,
         "source": esc(source), "source_text": esc(source.replace("https://", "")),
         "narch": len(ctx["order"]), "cov": esc(hero_big), "cap": esc(hero_cap), "down": down_text,
-        "tiles": tiles, "use": use, "figs": figs, "repos": repos,
+        "tiles": tiles, "use": use, "figs": figs, "sizes": sizes[0], "size_note": sizes[1], "repos": repos,
         "probes": probes_html, "badges": table(["badge", "URL"], badge_rows),
     }
 
@@ -1634,6 +1871,7 @@ def main(argv):
         "tolerance": (sync.get("tolerance_days") or 3) * 86400,
         "series": series,
         "hist_order": [a for a in order if a in series] + sorted(a for a in series if a not in order),
+        "synced": last_synced(status, targets),
     }
 
     builders = [("coverage", chart_coverage), ("freshness", chart_freshness),
@@ -1657,6 +1895,14 @@ def main(argv):
     write(os.path.join(site, "badges", "all.svg"),
           group_badge("mirror", ctx["targets"], interval, tolerance, count=True))
     badges.append("all")
+    write(os.path.join(site, "badges", "synced.svg"), synced_badge(ctx["synced"], now))
+    badges.append("synced")
+    write(os.path.join(site, "badges", "size.svg"), size_badge("size", ctx["targets"]))
+    badges.append("size")
+    for a in order:
+        ts = [t for t in ctx["targets"] if t["arch"] == a]
+        write(os.path.join(site, "badges", "size-%s.svg" % a), size_badge("%s size" % a, ts))
+        badges.append("size-" + a)
     write(os.path.join(site, "badges", "speed.svg"), speed_badge(bench, now))
     badges.append("speed")
 

@@ -9,7 +9,11 @@
 # XML, every badge must carry its text, and the page must reference every
 # chart and badge. With one registry read that fails, and with none that
 # answers, a sum over part of the targets must say which part, and nothing
-# may say "not mirrored" for a registry that did not answer.
+# may say "not mirrored" for a registry that did not answer. Each time on the
+# page must be UTC text in a <time> element, the page must have one inline
+# script and no other, and each sum of the size table must equal the sum of
+# its targets. The synced badge must say its age and colour at 30 min, 5 h,
+# 12 h and 30 h, and fall back to the fetched time.
 #
 # ⚠ db_records needs GNU tar, and status-render needs python3. A shell that
 # lacks one skips that part and says why: busybox has neither, Arch has no
@@ -70,18 +74,21 @@ pkg() {
 mkdb() {
   (cd "$1" && tar -czf "$2" -- *)
 }
-# mirror ARCH REPO DB FETCHED: the db as the blob latest names
+# mirror ARCH REPO DB FETCHED [CREATED]: the db as the blob latest names;
+# with CREATED, latest names it as org.opencontainers.image.created, as oras
+# does
 mirror() {
   local base="$net/ghcr.io/v2/test/mirror/$1/$2" sha size
   sha="$(sha256sum "$3" | cut -d ' ' -f 1)"
   size="$(wc -c < "$3" | tr -d ' ')"
   mkdir -p "$base/manifests" "$base/blobs"
   cp "$3" "$base/blobs/sha256:$sha"
-  jq -n --arg sha "sha256:$sha" --argjson size "$size" --arg repo "$2" --arg fetched "$4" '{
+  jq -n --arg sha "sha256:$sha" --argjson size "$size" --arg repo "$2" --arg fetched "$4" --arg created "${5:-}" '{
     schemaVersion: 2, mediaType: "application/vnd.oci.image.manifest.v1+json",
     layers: [{mediaType: "application/vnd.pkgforge.archlinux.db.v1", digest: $sha, size: $size,
               annotations: {"org.opencontainers.image.title": "\($repo).db"}}],
-    annotations: {"dev.pkgforge.mirror.fetched": $fetched, "dev.pkgforge.mirror.run": "42"}}' \
+    annotations: ({"dev.pkgforge.mirror.fetched": $fetched, "dev.pkgforge.mirror.run": "42"}
+                  + if $created == "" then {} else {"org.opencontainers.image.created": $created} end)}' \
     > "$base/manifests/latest"
 }
 redirect() {
@@ -148,7 +155,8 @@ if [ "$rc" -ne 0 ]; then
   exit $?
 fi
 
-mirror x86_64 core "$net/up.test/x86_64/core/core.db" 2026-10-14T00:00:00Z
+# x86_64-core names a created time with a fraction; x86_64-extra names none
+mirror x86_64 core "$net/up.test/x86_64/core/core.db" 2026-10-14T00:00:00Z 2026-10-14T00:30:00.123456Z
 mirror x86_64 extra "$work/extra-mirror.db" 2026-10-14T00:00:00Z
 redirect x86_64/core/core.db
 redirect x86_64/core/acl-2.3.2-1-x86_64.pkg.tar.zst
@@ -248,6 +256,12 @@ check "summary: 5 targets, 2 promoted, 1 current, 7 of 13 files" "5 2 1 7 13" \
   "$(q '.summary | "\(.targets) \(.promoted) \(.current) \(.mirrored_files) \(.upstream_files)"')" "jq .summary OUT/status.json"
 check "summary: the sums count 4 measured targets; x86_64-multilib is not read upstream" "4 0" \
   "$(q '.summary | "\(.measured) \(.mirror_unread)"')" "jq .summary OUT/status.json"
+check "mirror.created is latest's org.opencontainers.image.created, the fraction cut; null when latest names none" \
+  "2026-10-14T00:30:00Z null" \
+  "$(q '[.targets[] | select(.target == "x86_64-core" or .target == "x86_64-extra") | .mirror.created] | map(tostring) | join(" ")')" \
+  "jq '.targets[].mirror' OUT/status.json"
+check "summary: last_synced is the newest of each target's created time, or its fetched time" \
+  2026-10-14T00:30:00Z "$(q .summary.last_synced)" "jq .summary OUT/status.json"
 check "worker: one failed probe fails the run, the first in a row" "false 1 1 2026-10-14T03:00:00Z" \
   "$(q '.worker | "\(.ok) \(.failures) \(.failed_runs) \(.failing_since)"')" "jq .worker OUT/status.json"
 check "worker: one failed run is not down" "0 false" \
@@ -362,6 +376,20 @@ check "a registry that does not resolve: the collect measures and exits 0" 0 "$r
 check "summary: no registry read: 0 promoted, 5 not read, 0 measured, every sum unknown" "0 5 0 null null null null null" \
   "$(q '.summary | "\(.promoted) \(.mirror_unread) \(.measured) \(.mirrored_files) \(.upstream_files) \(.mirrored_bytes) \(.upstream_bytes) \(.coverage_files)"')" \
   "jq .summary OUT/status.json"
+check "summary: no registry read: last_synced is unknown" null "$(q .summary.last_synced)" "jq .summary OUT/status.json"
+
+# No latest names a created time: the newest fetched time counts. Here
+# x86_64-core was fetched at 00:20 and x86_64-extra at 00:00.
+out="$work/run7"
+mkdir -p "$out"
+mirror x86_64 core "$net/up.test/x86_64/core/core.db" 2026-10-14T00:20:00Z
+rc=0
+collect "$out" || rc=$?
+mirror x86_64 core "$net/up.test/x86_64/core/core.db" 2026-10-14T00:00:00Z 2026-10-14T00:30:00.123456Z
+check "no latest names a created time: the collect measures and exits 0" 0 "$rc" "$RP"
+check "no latest names a created time: last_synced falls back to the newest fetched time" \
+  "2026-10-14T00:20:00Z null" "$(q '"\(.summary.last_synced) \([.targets[].mirror.created | select(. != null)] | first)"')" \
+  "jq '.summary, [.targets[].mirror]' OUT/status.json"
 
 #---------------------------------------------------------------------------#
 # check-staleness: a target with no latest is new while git says its file is
@@ -453,7 +481,7 @@ jq -nc --argjson end "$NOW" '
          "aarch64-core": {n: 2, m: 0, b: 3000, mb: 0, a: null, l: null, c: 0}}}' > "$in/history.jsonl"
 
 cat > "$work/check.py" << 'EOF'
-import json, os, sys
+import json, os, re, sys
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
@@ -553,6 +581,185 @@ say(not lost, "index.html references every chart and badge", " ".join(lost))
 broken = sorted(x for x in r.refs if not os.path.isfile(os.path.join(site, x)))
 say(not broken, "every file index.html references exists", " ".join(broken))
 
+TIME = re.compile(r"^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}):\d{2}Z$")
+LOOSE = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}")
+
+
+class Page(HTMLParser):
+    """The <time> elements, the scripts, the event handler attributes, any
+    time text outside a <time>, and the rows of the size table."""
+
+    def __init__(self):
+        super().__init__()
+        self.times, self.scripts, self.handlers, self.loose, self.rows = [], [], [], [], []
+        self.time = self.script = self.row = self.cell = None
+        self.style = self.in_size = False
+        self.section = None
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        self.handlers += ["%s=%s" % (k, v) for k, v in attrs if k.startswith("on")
+                          or (k in ("href", "src") and (v or "").strip().lower().startswith("javascript:"))]
+        if tag == "time":
+            self.time = [a.get("datetime"), ""]
+        elif tag == "script":
+            self.script = [a, ""]
+        elif tag == "style":
+            self.style = True
+        elif tag == "table" and "size" in (a.get("class") or "").split():
+            self.in_size = True
+        elif self.in_size and tag in ("thead", "tbody", "tfoot"):
+            self.section = tag
+        elif self.in_size and tag == "tr":
+            self.row = {"section": self.section, "attrs": a, "cells": []}
+        elif self.row is not None and tag in ("td", "th"):
+            self.cell = [a, ""]
+
+    def handle_endtag(self, tag):
+        if tag == "time" and self.time is not None:
+            self.times.append(tuple(self.time))
+            self.time = None
+        elif tag == "script" and self.script is not None:
+            self.scripts.append(tuple(self.script))
+            self.script = None
+        elif tag == "style":
+            self.style = False
+        elif tag == "table":
+            self.in_size = False
+        elif tag in ("td", "th") and self.cell is not None:
+            self.row["cells"].append(tuple(self.cell))
+            self.cell = None
+        elif tag == "tr" and self.row is not None:
+            self.rows.append(self.row)
+            self.row = None
+
+    def handle_data(self, data):
+        if self.script is not None:
+            self.script[1] += data
+            return
+        if self.style:
+            return
+        if self.cell is not None:
+            self.cell[1] += data
+        if self.time is not None:
+            self.time[1] += data
+        elif LOOSE.search(data):
+            self.loose.append(data.strip())
+
+
+pg = Page()
+with open(os.path.join(site, "index.html"), encoding="utf-8") as f:
+    pg.feed(f.read())
+
+bad = []
+for dt, text in pg.times:
+    m = TIME.match(dt or "")
+    if not m:
+        bad.append("datetime=%r" % dt)
+    elif text != "%s %s UTC" % (m.group(1), m.group(2)):
+        bad.append("datetime=%s shows %r" % (dt, text))
+say(pg.times and not bad, "every <time> has a datetime ending in Z and shows that time as UTC text",
+    "%d <time>; %s" % (len(pg.times), "; ".join(bad)))
+say(not pg.loose, "index.html shows no time outside a <time> element", " | ".join(pg.loose))
+
+srcs = [a.get("src") for a, _ in pg.scripts if "src" in a]
+say(len(pg.scripts) == 1 and not srcs, "index.html has one script, inline, and no other",
+    "%d script(s), src: %s" % (len(pg.scripts), srcs))
+code = pg.scripts[0][1] if pg.scripts else ""
+lost = [w for w in ('addEventListener("load"', 'querySelectorAll("time[datetime]")', "timeZoneName",
+                    ".title =", " h ago") if w not in code]
+say(not lost, "the script sets each <time> title to the local time, its time zone and its age, after load",
+    "not in the script: %s" % lost)
+say(not pg.handlers, "index.html has no event handler attribute and no javascript: URL", " ".join(pg.handlers))
+
+with open(os.path.join(site, "status.json"), encoding="utf-8") as f:
+    st = json.load(f)
+
+
+def side(t, which):
+    """What the size table must show for one target: (bytes, files) or None."""
+    if which == "mirror":
+        m = t.get("mirror") or {}
+        if m.get("state") == "absent":
+            return 0, 0
+        if m.get("state") == "promoted" and isinstance(m.get("bytes"), int):
+            return m["bytes"], m["files"]
+        return None
+    u = t.get("upstream") or {}
+    return (u["bytes"], u["files"]) if u.get("ok") is True and isinstance(u.get("bytes"), int) else None
+
+
+def want(ts):
+    out = []
+    for which in ("mirror", "upstream"):
+        got = [x for x in (side(t, which) for t in ts) if x is not None]
+        out += [sum(b for b, _ in got), sum(n for _, n in got)] if got else [None, None]
+    return out
+
+
+def shown(row):
+    vals, bad = [], []
+    for a, text in row["cells"][1:]:
+        k = "data-bytes" if "data-bytes" in a else "data-files"
+        v = None if a.get(k) in (None, "") else int(a[k])
+        vals.append(v)
+        text = text.strip()
+        if v is None:
+            ok = text == "-"
+        elif k == "data-files":
+            ok = text == "{:,}".format(v)
+        else:
+            digits = len(text.split(".")[1]) if "." in text else 0
+            ok = abs(float(text) - v / 1073741824) <= 0.5 * 10 ** -digits + 1e-9
+        if not ok:
+            bad.append("%s=%s shows %r" % (k, v, text))
+    return vals, bad
+
+
+targets = st["targets"]
+arches = sorted({t["target"].split("-", 1)[0] for t in targets})
+rows_t = {r["attrs"].get("data-target"): r for r in pg.rows if r["attrs"].get("data-target")}
+rows_a = {r["attrs"].get("data-arch"): r for r in pg.rows if r["attrs"].get("data-arch")}
+rows_f = [r for r in pg.rows if r["section"] == "tfoot"]
+lost = [t["target"] for t in targets if t["target"] not in rows_t] + [a for a in arches if a not in rows_a]
+say(not lost and len(rows_f) == 1, "the size table has a row per architecture, per repository and one total row",
+    "no row for %s; %d total row(s)" % (lost, len(rows_f)))
+bad_t, bad_a, bad_s = [], [], []
+for t in targets:
+    if t["target"] in rows_t:
+        vals, b = shown(rows_t[t["target"]])
+        bad_s += b
+        if vals != want([t]):
+            bad_t.append("%s: %s, not %s" % (t["target"], vals, want([t])))
+for a in arches:
+    if a in rows_a:
+        vals, b = shown(rows_a[a])
+        bad_s += b
+        ts = [t for t in targets if t["target"].split("-", 1)[0] == a]
+        if vals != want(ts):
+            bad_a.append("%s: %s, not %s" % (a, vals, want(ts)))
+total = None
+if rows_f:
+    total, b = shown(rows_f[0])
+    bad_s += b
+say(not bad_t, "size table: each repository row holds its target's mirror and upstream bytes and files",
+    "; ".join(bad_t))
+say(not bad_a, "size table: each architecture row is the sum of its targets", "; ".join(bad_a))
+say(total == want(targets), "size table: the total row is the sum of every target",
+    "%s, not %s" % (total, want(targets)))
+say(not bad_s, "size table: each cell shows its value in GiB or in files", "; ".join(bad_s))
+
+bad = []
+for a in arches:
+    try:
+        t = texts(os.path.join(site, "badges", "size-%s.svg" % a))
+    except (OSError, ET.ParseError) as e:
+        bad.append("%s: %s" % (a, e))
+        continue
+    if "%s size" % a not in t:
+        bad.append("%s: text %r" % (a, t))
+say(not bad, "a size badge for each architecture (%s) parses as XML" % " ".join(arches), "; ".join(bad))
+
 with open(os.path.join(site, "history.json"), encoding="utf-8") as f:
     h = json.load(f)
 say(isinstance(h, list) and len(h) == spec["history"], "history.json holds %d point(s)" % spec["history"],
@@ -594,7 +801,7 @@ spec() {
   jq -nc --argjson charts "$CHARTS" --argjson cases "$1" --argjson history "$2" --argjson speed "$3" \
     --argjson over "$over" '{
     charts: $charts, bench_cases: $cases, history: $history,
-    svgs: (($charts | length) * 2 + 10),
+    svgs: (($charts | length) * 2 + 15),
     files: (["index.html", "status.json", "history.json", "bench.json"]
             + ($charts | map("charts/\(.).svg")) + ($charts | map("charts/narrow/\(.).svg"))),
     badges: {
@@ -607,18 +814,29 @@ spec() {
       "aarch64": ["aarch64", "not mirrored"],
       "loong64": ["loong64", "not mirrored"],
       "all": ["mirror", "53.8%", "2/5 repos", "4 of 5 measured"],
+      "synced": ["synced", "2 h ago"],
+      "size": ["size", "2.4 KiB"],
+      "size-x86_64": ["x86_64 size", "2.4 KiB"],
+      "size-aarch64": ["aarch64 size", "not mirrored"],
+      "size-loong64": ["loong64 size", "not mirrored"],
       "speed": $speed},
-    badges_without: {"x86_64-core": ["measured"], "speed": ["ago", "date unknown"]},
+    badges_without: {"x86_64-core": ["measured"], "speed": ["ago", "date unknown"], "size": ["measured"]},
     chart_text: {
       coverage: ["Coverage by repository", "53.8%", "in 4 of 5 repositories", "x86_64", "aarch64", "loong64", "core", "extra", "multilib", "upstream only"],
       freshness: ["Snapshot age", "3.0 h", "sync every 3 h", "not mirrored yet", "matches upstream"],
-      size: ["Size by repository", "GiB", "in 4 of 5 repositories"],
+      size: ["Size by repository", "GiB", "in 4 of 5 repositories", "x86_64 · 1.6 KiB of 2.4 KiB, 2 of 3 measured",
+             "aarch64 · 0 B of 2.9 KiB", "loong64 · 0 B of 2.9 KiB"],
       "history-coverage": ["Coverage, last 30 days", "x86_64", "aarch64", "Time, UTC"],
       "history-age": ["Snapshot age, last 30 days", "sync every 3 h", "log scale"]},
     page_text: ([
       "over the 4 of 5 repositories measured in this run. 1 could not be read.",
       "of 13 upstream, in 4 of 5 repositories",
-      "Failed probes in 2 runs in a row, over 50 minutes or more, open the worker-down issue."]
+      "Failed probes in 2 runs in a row, over 50 minutes or more, open the worker-down issue.",
+      "Measured 2026-10-14 03:00 UTC", "The mirror last changed at 2026-10-14 00:30 UTC",
+      "so the synced badge says 2 h ago.",
+      "x86_64-core ok 100% 4 4 0 0.00 3.0 h 2 h ago 0 min 2026-10-14 00:00 UTC",
+      "epsilon-1-1-x86_64.pkg.tar.zst 0.00 3.0 h 3 h ago 1.0 h 2026-10-14 00:00 UTC",
+      "A sum counts only the repositories read on that side: upstream in 4 of 5."]
       + ($over.page_text_more // []))}
     * ($over | del(.page_text_more))'
 }
@@ -663,15 +881,20 @@ render "$in5" "$work/site5" "$(spec 0 2 '["pacman speed", "no data"]' '{
     "x86_64-core": ["x86_64-core", "100%", "4.0 h"],
     "x86_64-extra": ["x86_64-extra", "unknown"],
     "x86_64": ["x86_64", "100%", "4.0 h", "1 of 3 measured"],
-    "all": ["mirror", "50%", "1/5 repos", "3 of 5 measured"]},
+    "all": ["mirror", "50%", "1/5 repos", "3 of 5 measured"],
+    "synced": ["synced", "3 h ago"],
+    "size": ["size", "1000 B", "4 of 5 measured"],
+    "size-x86_64": ["x86_64 size", "1000 B", "2 of 3 measured"]},
+  "badges_without": {"size": []},
   "chart_text": {
     "coverage": ["Coverage by repository", "50%", "in 3 of 5 repositories", "registry not read"],
     "freshness": ["Snapshot age", "4.0 h", "sync every 3 h", "not mirrored yet", "matches upstream"],
-    "size": ["Size by repository", "in 3 of 5 repositories"]},
+    "size": ["Size by repository", "in 3 of 5 repositories", "x86_64 · 1000 B of 1000 B, 1 of 3 measured"]},
   "page_text": [
     "over the 3 of 5 repositories measured in this run. 2 could not be read.",
     "1 of 4 read", "1 not read from the registry; 1 match upstream now",
-    "x86_64 2026-10-14 03:00 77.7% 77.7%"]}')"
+    "x86_64 2026-10-14 03:00 UTC 77.7% 77.7%",
+    "A sum counts only the repositories read on that side: the mirror in 4 of 5 and upstream in 4 of 5."]}')"
 
 # No registry read at all (run6): every group is unknown, never "not
 # mirrored", and no sum reads as 0.
@@ -684,8 +907,11 @@ render "$in6" "$work/site6" "$(spec 0 2 '["pacman speed", "no data"]' '{
     "x86_64-multilib": ["x86_64-multilib", "unknown"], "aarch64-core": ["aarch64-core", "unknown"],
     "loong64-core": ["loong64-core", "unknown"],
     "x86_64": ["x86_64", "unknown"], "aarch64": ["aarch64", "unknown"], "loong64": ["loong64", "unknown"],
-    "all": ["mirror", "unknown"]},
-  "badges_without": {"x86_64": ["not mirrored"], "all": ["not mirrored"]},
+    "all": ["mirror", "unknown"], "synced": ["synced", "unknown"], "size": ["size", "unknown"],
+    "size-x86_64": ["x86_64 size", "unknown"], "size-aarch64": ["aarch64 size", "unknown"],
+    "size-loong64": ["loong64 size", "unknown"]},
+  "badges_without": {"x86_64": ["not mirrored"], "all": ["not mirrored"], "size": ["not mirrored"],
+                     "size-x86_64": ["not mirrored"]},
   "chart_text": {
     "coverage": ["Coverage by repository", "unknown"],
     "freshness": ["Snapshot age", "none", "sync every 3 h"],
@@ -705,13 +931,47 @@ render "$in7" "$work/site7" "$(spec 12 0 '["pacman speed", "oci 13.3 s", "offici
   "badges_without": {"speed": []},
   "chart_text": {"speed": ["Measured 2026-08-01 (73 d ago)"],
                  "history-coverage": ["Coverage, last 30 days", "No history yet"]},
-  "page_text_more": ["official mirror 15.6 s; measured 2026-08-01, 73 d ago"]}')"
+  "page_text_more": ["official mirror 15.6 s; measured 2026-08-01 05:50 UTC", "73 d ago"]}')"
 if grep -q 'fill:#9a6700' "$work/site7/badges/speed.svg"; then
   ok "site7: a bench older than 2 days gives the speed badge the warning colour"
 else
   fail "site7: a bench older than 2 days gives the speed badge the warning colour" \
     "$(sed -n 3,4p "$work/site7/badges/speed.svg")" "python3 -I scripts/status-render IN SITE"
 fi
+
+# The synced badge: the age rounded down, green under 6 h, yellow under 24
+# h, red after. The colour is the message's light fill.
+badge_says() {
+  local label fill
+  label="$(sed -n 's/.*aria-label="\([^"]*\)".*/\1/p' "$1")"
+  fill="$(grep -o '[.]msg{fill:#[0-9a-f]*}' "$1" | awk 'NR == 1 { sub(/^[.]msg[{]fill:/, ""); sub(/[}]$/, ""); print }')"
+  printf '%s %s\n' "$label" "$fill"
+}
+# synced_case NAME FILTER EXPECTED DESC: render run1's status.json through
+# the jq FILTER, then read badges/synced.svg
+synced_case() {
+  local d="$work/$1" rc=0
+  mkdir -p "$d"
+  jq --argjson now "$NOW" "$2" "$work/run1/status.json" > "$d/status.json"
+  python3 -I "$REPO_ROOT/scripts/status-render" "$d" "$d/site" > "$d.out" 2> "$d.err" || rc=$?
+  check "$1: status-render exits 0" 0 "$rc" "python3 -I scripts/status-render IN SITE; $(sed -n 1p "$d.err")"
+  check "$1: $4" "$3" "$(badge_says "$d/site/badges/synced.svg")" \
+    "jq --argjson now $NOW '$2' run1/status.json > IN/status.json; python3 -I scripts/status-render IN SITE"
+}
+# $now is jq's variable, not shell's.
+# shellcheck disable=SC2016
+{
+  synced_case synced-30m '.summary.last_synced = ($now - 1800 | todate)' "synced: 30 min ago #1a7f37" \
+    "30 min ago is green"
+  synced_case synced-5h '.summary.last_synced = ($now - 18000 | todate)' "synced: 5 h ago #1a7f37" \
+    "5 h ago is green"
+  synced_case synced-12h '.summary.last_synced = ($now - 43200 - 3599 | todate)' "synced: 12 h ago #9a6700" \
+    "12 h 59 min ago rounds down to 12 h, yellow"
+  synced_case synced-30h '.summary.last_synced = ($now - 108000 | todate)' "synced: 1 d ago #cf222e" \
+    "30 h ago is 1 d ago, red"
+  synced_case synced-fetched 'del(.summary.last_synced) | .targets[].mirror.created = null' \
+    "synced: 3 h ago #1a7f37" "a status.json with no created time falls back to the newest fetched time, 3 h ago"
+}
 
 # No status.json: refused, with the path named
 rc=0

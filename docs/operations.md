@@ -189,14 +189,17 @@ The site at <https://pkgforge-dev.github.io/mirror-archlinux/> holds:
 
 | path | contents |
 | --- | --- |
-| `index.html` | the dashboard: one static page, no JavaScript, light and dark |
+| `index.html` | the dashboard: one static page, light and dark, with one inline script for local times (below) |
 | `badges/<target>.svg` | coverage and snapshot age of one target |
 | `badges/<arch>.svg` | the same over the targets of one architecture |
 | `badges/all.svg` | the same over every target |
+| `badges/synced.svg` | the time since the mirror last changed (below) |
+| `badges/size.svg` | the bytes that the databases of the latest snapshots name, over every target, for example `369 GiB` or `1.2 TiB` |
+| `badges/size-<arch>.svg` | the same over the targets of one architecture |
 | `badges/speed.svg` | pacman's time through the wrapper and through the official mirror, from the bench; a bench older than 2 days shows its age, in the warning colour |
 | `charts/coverage.svg` | share of upstream files in the mirror, per target |
 | `charts/freshness.svg` | snapshot age per target, against the sync interval |
-| `charts/size.svg` | GiB per target, in the mirror and upstream |
+| `charts/size.svg` | GiB per target, in the mirror and upstream, grouped by architecture; each group label holds the sum of its architecture |
 | `charts/history-coverage.svg` | coverage per architecture, last 30 days |
 | `charts/history-age.svg` | oldest snapshot age per architecture, last 30 days |
 | `charts/speed.svg` | the bench: seconds per path and operation |
@@ -218,6 +221,33 @@ A target has a coverage only when a run reads both upstream and the registry. A 
 A group badge with no snapshot says `unknown` when its registry did not answer. It says `not mirrored` only when the registry says there is no `latest`. When no target is read on both sides, the headline and the file and size tiles say `unknown`.
 
 In `status.json`, `summary.measured` counts the targets read on both sides, and `summary.mirror_unread` the targets whose registry did not answer. The file and byte sums are `null` when no target was read.
+
+### The synced badge
+
+`badges/synced.svg` says how long ago the mirror last changed: `just now`, `N min ago`, `N h ago` or `N d ago`, rounded down.
+
+| age | colour |
+| --- | --- |
+| under 6 h | green |
+| 6 h to under 24 h | yellow |
+| 24 h or more | red |
+| no time known | grey, `unknown` |
+
+The time is `summary.last_synced` in `status.json`. It is the newest `org.opencontainers.image.created` of the `latest` manifests, which `scripts/status-collect` records per target as `mirror.created`. oras sets that annotation when `stage` pushes a snapshot. A manifest with no such annotation counts with its `dev.pkgforge.mirror.fetched` time. The table of repositories shows the same age per target, in the column `synced`.
+
+⚠ The age counts to the status run that wrote the badge, not to the moment a reader looks. A status run comes each hour and after each sync. A README shows a badge through GitHub's image proxy, which can serve an older copy.
+
+### Size per architecture and repository
+
+`badges/size.svg`, `badges/size-<arch>.svg` and the table "Size by architecture" of `index.html` count the files that the database of each `latest` names (`mirror.files`, `mirror.bytes`). A target with no `latest` holds 0. A target whose registry did not answer is left out. A size badge then says how many targets it counts, for example `110 GiB · 2 of 3 measured`. The upstream columns of the table count upstream's database in the same run. Each architecture row holds the sum of its repositories, and the last row holds the sum of all targets.
+
+⚠ `charts/size.svg` and the tile `Size in the mirror` count only the upstream files that the mirror holds (`coverage.bytes`). When a target is behind upstream, the two numbers differ.
+
+### Times on the page
+
+Each time on `index.html` is UTC text in a `<time>` element, for example `<time datetime="2026-10-15T00:08:04Z">2026-10-15 00:08 UTC</time>`. One inline script runs after the page loads. It gives each `<time>` a title: the viewer's local time with its time zone, and the age of that time, for example `Oct 15, 2026, 05:53 AM GMT+5:45, 1 h ago`. Hold the pointer on a time to see the title. The page has no other script and loads no script file. With no JavaScript, the page reads the same, in UTC.
+
+⚠ A badge or a chart is an image, and an image runs no script. So a badge or a chart shows a time in UTC, or an age counted to the status run.
 
 ## The status branch
 

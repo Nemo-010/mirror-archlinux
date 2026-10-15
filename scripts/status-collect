@@ -36,12 +36,15 @@
 #   summary   {targets, promoted, current, measured, mirror_unread,
 #             upstream_files, upstream_bytes, mirrored_files, mirrored_bytes,
 #             coverage_files, coverage_bytes, oldest_age_seconds,
-#             newest_age_seconds}
+#             newest_age_seconds, last_synced}
 #             measured counts the targets with a coverage, read on both
 #             sides. The files, bytes and coverage sums are over those
 #             targets only, and null when there is none. mirror_unread counts
 #             the targets whose registry did not answer (mirror state error):
-#             promoted does not count them, whatever they hold.
+#             promoted does not count them, whatever they hold. last_synced
+#             is when the mirror last changed: the newest of each target's
+#             mirror.created, or its mirror.fetched when the manifest names
+#             no created time. null when no latest names either.
 #   worker    {probed, ok, probes, failures, failed_runs, failing_since,
 #             failing_seconds, down, down_after {runs, seconds},
 #             median_seconds}; failed_runs counts the runs in a row, this one
@@ -55,8 +58,10 @@
 #     upstream {ok, server, sha256, files, bytes, newest_builddate, tried[]
 #               {server, result}, error},
 #     mirror   {state promoted|absent|error, error, manifest_code,
-#               manifest_seconds, fetched, run, db_sha256, files, bytes,
-#               newest_builddate},
+#               manifest_seconds, fetched, created, run, db_sha256, files,
+#               bytes, newest_builddate}; created is the latest manifest's
+#               org.opencontainers.image.created, which oras sets when stage
+#               pushes the snapshot, or null,
 #     current  true when the mirror database is upstream's database,
 #     coverage {files, of_files, ratio_files, bytes, of_bytes, ratio_bytes,
 #               missing, missing_names[]} or null when upstream or the
@@ -287,7 +292,7 @@ collect_target() {
   #-------------------------------------------------------------------------#
   # The mirror's latest, anonymously
   #-------------------------------------------------------------------------#
-  local token="" m_state m_err="" m_code=0 m_secs="" fetched="" run="" m_sha="" m_n="" m_b="" m_nb="" errc d
+  local token="" m_state m_err="" m_code=0 m_secs="" fetched="" created="" run="" m_sha="" m_n="" m_b="" m_nb="" errc d
   rc=0
   token="$(registry_token "$repo_path" pull)" || rc=$?
   if [ "$rc" -eq 0 ]; then
@@ -327,6 +332,15 @@ collect_target() {
     if [ -n "$fetched" ] && ! [[ "$fetched" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
       warn "$name: latest names a fetched time '$fetched' that is not ISO 8601 UTC; the age is not measured"
       fetched=""
+    fi
+    # oras writes whole seconds. A fraction is cut, so jq's fromdateiso8601
+    # reads the time.
+    created="$(jq -r '.annotations["org.opencontainers.image.created"] // empty' "$tw/latest.json")"
+    if [[ "$created" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})([.][0-9]+)?Z$ ]]; then
+      created="${BASH_REMATCH[1]}Z"
+    elif [ -n "$created" ]; then
+      warn "$name: latest names a created time '$created' that is not ISO 8601 UTC; its fetched time counts as its synced time"
+      created=""
     fi
     read -r d _ _ <<< "$(manifest_layer "$tw/latest.json" "$repo.db")"
     if [ -z "${d:-}" ]; then
@@ -402,7 +416,7 @@ collect_target() {
     --argjson up_n "$(num "$up_n")" --argjson up_b "$(num "$up_b")" --argjson up_nb "$(num "$up_nb")" \
     --argjson tried "$tried" --arg up_err "$up_err" \
     --arg m_state "$m_state" --arg m_err "$m_err" --argjson m_code "$m_code" \
-    --argjson m_secs "$(num "${m_secs:-}")" --arg fetched "$fetched" --arg run "$run" \
+    --argjson m_secs "$(num "${m_secs:-}")" --arg fetched "$fetched" --arg created "$created" --arg run "$run" \
     --arg m_sha "$m_sha" --argjson m_n "$(num "$m_n")" --argjson m_b "$(num "$m_b")" \
     --argjson m_nb "$(num "$m_nb")" --argjson cov "$cov" --argjson now "$now" \
     --argjson w_db "$w_db" --argjson w_pkg "$w_pkg" '
@@ -412,7 +426,7 @@ collect_target() {
       upstream: {ok: $up_ok, server: ($up_server | nul), sha256: ($up_sha | nul),
         files: $up_n, bytes: $up_b, newest_builddate: $up_nb, tried: $tried, error: ($up_err | nul)},
       mirror: {state: $m_state, error: ($m_err | nul), manifest_code: $m_code, manifest_seconds: $m_secs,
-        fetched: ($fetched | nul), run: ($run | nul), db_sha256: ($m_sha | nul),
+        fetched: ($fetched | nul), created: ($created | nul), run: ($run | nul), db_sha256: ($m_sha | nul),
         files: $m_n, bytes: $m_b, newest_builddate: $m_nb},
       current: (if $up_sha != "" and $m_sha != "" then $up_sha == $m_sha
                 elif $m_state == "absent" and $up_ok then false else null end),
@@ -505,7 +519,9 @@ jq -s \
         coverage_files: (if ($nf // 0) > 0 then $mf / $nf else null end),
         coverage_bytes: (if ($nb // 0) > 0 then $mb / $nb else null end),
         oldest_age_seconds: ($ages | max),
-        newest_age_seconds: ($ages | min)
+        newest_age_seconds: ($ages | min),
+        # One ISO 8601 UTC form for both, so the largest string is the newest.
+        last_synced: ([$t[] | .mirror.created // .mirror.fetched | select(. != null)] | max)
       },
       worker: {
         probed: ($worker != ""),
