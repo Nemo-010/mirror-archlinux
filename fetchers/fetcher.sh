@@ -21,11 +21,14 @@
 #   --client LIST   clients to try, in order, comma or space separated; a
 #                   client name may also be given as --client NAME
 #   --expect KIND   any (default), db, tar or sig: the structural check
+#   --sha256 HEX    the sha256 the body must have, on top of the check above
 #   --retries N     attempts per client (default 2)
 #   --timeout SEC   whole-call deadline of one attempt (default 300)
 #   --connect SEC   connect deadline (default 20)
 #   --no-cache      do not read or write the per-host preference
 #   --list          print the available clients, one per line, and exit
+#   --explain       print the client order and each client's availability, and exit
+#   --help          this text, and exit
 #   --quiet         no per-attempt line on stderr
 #
 # Environment: FETCHER_CLIENTS (the order), FETCHER_CACHE (the cache root),
@@ -42,10 +45,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 quiet="${FETCHER_QUIET:-0}"
 clients="${FETCHER_CLIENTS:-}"
 expect="any"
+want_sha=""
 retries="${FETCHER_RETRIES:-2}"
 timeout_s="${FETCHER_MAX_TIME:-300}"
 connect_s="${FETCHER_CONNECT_TIMEOUT:-20}"
 use_cache=1
+explain=0
+explain_url=""
 positional=()
 
 while [ "$#" -gt 0 ]; do
@@ -58,6 +64,11 @@ while [ "$#" -gt 0 ]; do
     --expect)
       [ "$#" -ge 2 ] || fetcher_die "--expect needs a value"
       expect="$2"
+      shift 2
+      ;;
+    --sha256)
+      [ "$#" -ge 2 ] || fetcher_die "--sha256 needs a value"
+      want_sha="$2"
       shift 2
       ;;
     --retries)
@@ -85,6 +96,18 @@ while [ "$#" -gt 0 ]; do
       done
       exit 0
       ;;
+    --explain)
+      explain=1
+      if [ "$#" -ge 2 ] && [ "${2#http}" != "$2" ]; then
+        explain_url="$2"
+        shift
+      fi
+      shift
+      ;;
+    --help | -h)
+      sed -n '2,/^set -euo pipefail/p' "$0" | sed '$d; s/^# \{0,1\}//'
+      exit 0
+      ;;
     --quiet)
       quiet=1
       shift
@@ -110,20 +133,32 @@ case "$expect" in
   any | db | tar | sig) ;;
   *) fetcher_die "--expect must be any, db, tar or sig, not '$expect'" ;;
 esac
+if [ -n "$want_sha" ] && ! [[ "$want_sha" =~ ^[0-9a-f]{64}$ ]]; then
+  fetcher_die "--sha256 must be 64 lowercase hex characters, not '$want_sha'"
+fi
+for c in $clients; do
+  client_known "$c" || fetcher_die "unknown client $c" "reproduce: fetchers/fetcher.sh --list"
+done
 case "$retries" in
   '' | *[!0-9]* | 0) fetcher_die "--retries must be a positive integer, not '$retries'" ;;
 esac
 case "$timeout_s$connect_s" in
   *[!0-9]*) fetcher_die "--timeout and --connect must be positive integers" ;;
 esac
-[ "${#positional[@]}" -eq 2 ] || fetcher_die "usage: fetchers/fetcher.sh [OPTIONS] URL OUT" \
-  "reproduce: fetchers/fetcher.sh --expect db https://repo.archlinuxpower.org/base/powerpc64le/base.db base.db"
-url="${positional[0]}"
-out="${positional[1]}"
-case "$url" in
-  https://* | http://*) ;;
-  *) fetcher_die "URL is http or https, not '$url'" ;;
-esac
+if [ "$explain" -eq 1 ]; then
+  [ "${#positional[@]}" -le 1 ] || fetcher_die "usage: fetchers/fetcher.sh --explain [URL]"
+  url="${explain_url:-${positional[0]:-example.invalid}}"
+  out=""
+else
+  [ "${#positional[@]}" -eq 2 ] || fetcher_die "usage: fetchers/fetcher.sh [OPTIONS] URL OUT" \
+    "reproduce: fetchers/fetcher.sh --expect db https://repo.archlinuxpower.org/base/powerpc64le/base.db base.db"
+  url="${positional[0]}"
+  out="${positional[1]}"
+  case "$url" in
+    https://* | http://*) ;;
+    *) fetcher_die "URL is http or https, not '$url'" ;;
+  esac
+fi
 
 # host_of URL -> the host and port of URL, without any credential
 host_of() {
@@ -160,6 +195,19 @@ summary_line() {
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6" >> "$FETCHER_SUMMARY"
 }
 
+if [ "$explain" -eq 1 ]; then
+  ehost="$(host_of "${explain_url:-$url}")"
+  printf 'order: %s\n' "$(order_for "$ehost")"
+  for c in $FETCHER_CLIENTS_DEFAULT; do
+    if client_available "$c"; then
+      printf '%s\tavailable\n' "$c"
+    else
+      printf '%s\tnot available\n' "$c"
+    fi
+  done
+  exit 0
+fi
+
 host="$(host_of "$url")"
 order="$(order_for "$host")"
 [ -n "${order// /}" ] || fetcher_die "no client can run here" "reproduce: fetchers/fetcher.sh --list"
@@ -192,7 +240,7 @@ for client in $order; do
     FETCHER_MAX_TIME="$timeout_s" FETCHER_CONNECT_TIMEOUT="$connect_s" client_run "$client" "$url" "$body" "$log" || rc=$?
     took=$(( $(date -u +%s) - started ))
     class=0
-    status_class "$client" "$log" "$rc" || class=$?
+    status_class "$log" "$rc" || class=$?
     detail="$(tail -c 200 "$log" 2> /dev/null | tr '\t\n' '  ' | sed 's/  *$//')"
     if [ -s "$log.code" ]; then
       detail="HTTP $(cat "$log.code")${detail:+; $detail}"
@@ -212,10 +260,20 @@ for client in $order; do
       if [ "$attempt" -lt "$retries" ]; then sleep 2; fi
       continue
     }
+    if [ -n "$want_sha" ]; then
+      got_sha="$(body_sha256 "$body")"
+      if [ "$got_sha" != "$want_sha" ]; then
+        summary_line "$host" "$client" bad-body "$attempt" "$took" "sha256 $got_sha, wanted $want_sha"
+        if [ "$attempt" -lt "$retries" ]; then sleep 2; fi
+        continue
+      fi
+    fi
     summary_line "$host" "$client" ok "$attempt" "$took" "$detail"
     if [ "$use_cache" -eq 1 ]; then
       mkdir -p "$FETCHER_CACHE/hosts"
-      printf '%s\n' "$client" > "$FETCHER_CACHE/hosts/$host"
+      # One writer wins: the value is moved into place, never written in place.
+      printf '%s\n' "$client" > "$FETCHER_CACHE/hosts/.$host.$$"
+      mv -f "$FETCHER_CACHE/hosts/.$host.$$" "$FETCHER_CACHE/hosts/$host"
     fi
     mv -f "$body" "$out"
     if [ "$quiet" != 1 ]; then

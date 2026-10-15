@@ -18,11 +18,14 @@ absent (404 or 410), 1 no client read it or the body failed its check.
 | --- | --- |
 | `--client LIST` | clients to try, in order (comma or space separated) |
 | `--expect KIND` | `any` (default), `db`, `tar` or `sig` |
+| `--sha256 HEX` | the sha256 the body must have, on top of `--expect` |
 | `--retries N` | attempts per client (default 2) |
 | `--timeout SEC` | whole-call deadline of one attempt (default 300) |
 | `--connect SEC` | connect deadline (default 20) |
 | `--no-cache` | do not read or write the per-host preference |
 | `--list` | print the clients that can run here, one per line |
+| `--explain [URL]` | print the order and each client's availability, then exit |
+| `--help` | the usage, and exit |
 | `--quiet` | no per-attempt line on stderr |
 
 Environment: `FETCHER_CLIENTS` (the order), `FETCHER_CACHE` (the cache root,
@@ -37,6 +40,26 @@ time, so a host that needs a browser pays for the browser once.
 A 403 body is not a body: the client that got it is not an answer, and the next
 client is tried. A 404 or 410 ends the call with status 4, because another
 client would hear the same.
+
+Every client is wrapped in a hard stop of `--timeout` + 5 s, and the browser
+clients get the same value as a `page.goto` timeout and an abort on the in-page
+`fetch()`, so a browser that hangs ends within the deadline curl has. The
+browser clients close on `SIGTERM`, so a stopped call leaves no Chromium
+behind.
+
+A name that no build defines is refused before any request. The per-host
+preference is moved into place, so two callers that read the same host at once
+do not half-write it.
+
+The dispatch is one program per client, and no two clients share one:
+
+| client | program |
+| --- | --- |
+| `curl` | `curl` |
+| `curl-impersonate` | `curl-impersonate/fetch.sh` |
+| `chromium` | `node chromium/fetch.mjs` |
+| `cloak-browser` | `node cloak-browser/fetch.mjs` |
+| `playwright` | `playwright/venv/bin/python playwright/fetch.py` |
 
 ## The clients
 

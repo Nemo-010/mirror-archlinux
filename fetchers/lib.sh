@@ -103,24 +103,41 @@ client_available() {
   "$script"
 }
 
+# client_known NAME -> 0 when NAME is a client this manager can run. A client
+# that is not available here is still known: only a name no build defines is
+# refused.
+client_known() {
+  case "$1" in
+    curl | curl-impersonate | chromium | cloak-browser | playwright) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # client_run NAME URL OUT LOG -> the client's own status. The body lands in
-# OUT; the client's own output lands in LOG.
+# OUT; the client's own output lands in LOG. Every client is wrapped in a hard
+# stop of FETCHER_MAX_TIME + 5 s, so a browser that hangs ends within the same
+# deadline curl has.
 client_run() {
-  local name="$1" url="$2" out="$3" log="$4"
+  local name="$1" url="$2" out="$3" log="$4" secs="${FETCHER_MAX_TIME:-300}" dead=()
+  dead=(timeout -k 5 "$((secs + 5))")
   case "$name" in
     curl)
       curl -q --location --silent --show-error --max-redirs 5 \
         --proto '=https,http' --proto-redir '=https,http' \
         --connect-timeout "${FETCHER_CONNECT_TIMEOUT:-20}" \
         --speed-limit 1024 --speed-time 60 \
-        --max-time "${FETCHER_MAX_TIME:-300}" \
+        --max-time "$secs" \
         --output "$out" --write-out '%{http_code}' "$url" > "$log.code" 2> "$log"
       ;;
-    curl-impersonate | cloak-browser)
-      "$FETCHER_HOME/$name/fetch.sh" "$url" "$out" > "$log" 2>&1
+    curl-impersonate)
+      FETCHER_MAX_TIME="$secs" "${dead[@]}" "$FETCHER_HOME/curl-impersonate/fetch.sh" "$url" "$out" > "$log" 2>&1
       ;;
-    chromium | playwright)
-      node "$FETCHER_HOME/$name/fetch.mjs" "$url" "$out" > "$log" 2>&1
+    chromium | cloak-browser)
+      FETCHER_MAX_TIME="$secs" "${dead[@]}" node "$FETCHER_HOME/$name/fetch.mjs" "$url" "$out" > "$log" 2>&1
+      ;;
+    playwright)
+      FETCHER_MAX_TIME="$secs" "${dead[@]}" "$FETCHER_HOME/playwright/venv/bin/python" \
+        "$FETCHER_HOME/playwright/fetch.py" "$url" "$out" > "$log" 2>&1
       ;;
     *)
       echo "unknown client $name" > "$log"
@@ -129,12 +146,12 @@ client_run() {
   esac
 }
 
-# status_class NAME LOG RC -> 0 read, 4 absent, 1 anything else. A client that
+# status_class LOG RC -> 0 read, 4 absent, 1 anything else. A client that
 # writes the HTTP status to LOG.code reports it; every other client maps its
 # own exit status, 4 meaning absent. An HTTP answer is authoritative: a 403
 # body is not a body, whatever the file holds.
 status_class() {
-  local log="$2" rc="$3" code=""
+  local log="$1" rc="$2" code=""
   if [ -f "$log.code" ]; then
     code="$(cat "$log.code")"
     case "$code" in
@@ -148,4 +165,9 @@ status_class() {
     4) return 4 ;;
     *) return 1 ;;
   esac
+}
+
+# body_sha256 FILE -> the sha256 of FILE, lowercase hex
+body_sha256() {
+  sha256sum "$1" | cut -d ' ' -f 1
 }

@@ -190,4 +190,104 @@ out="$(FETCHER_CACHE="$work/drift-cache" "$REPO_ROOT/fetchers/drift.sh" --key cu
 check "drift serves the value from its cache" "0 curl-impersonate	v9.9.9" "$rc $(printf '%s' "$out" | tr -d '\n')" \
   "fetchers/drift.sh --key curl-impersonate"
 
+#---------------------------------------------------------------------------#
+# The usage, the order, and a client name that no build defines
+#---------------------------------------------------------------------------#
+rc=0
+help_out="$("$work/fetchers/fetcher.sh" --help 2>&1)" || rc=$?
+check "--help names the options and exits 0" "0 1" \
+  "$rc $(printf '%s\n' "$help_out" | awk '/--expect/ { n++ } END { print n + 0 }')" \
+  "fetchers/fetcher.sh --help"
+
+explain_out="$(FETCHER_CACHE="$work/cache" "$work/fetchers/fetcher.sh" --explain https://explain.test/a 2>&1)"
+check "--explain names the order and the availability" "1 1" \
+  "$(printf '%s\n' "$explain_out" | awk '/^order: curl/ { n++ } END { print n + 0 }') $(printf '%s\n' "$explain_out" | awk -F '\t' '$1 == "curl" && $2 == "available" { n++ } END { print n + 0 }')" \
+  "fetchers/fetcher.sh --explain URL"
+
+behaviour 200 good.db
+: > "$work/fakecurl/calls"
+rc=0
+run --client bogus --expect any https://bogus.test/a "$work/bogus.out" > /dev/null 2>&1 || rc=$?
+check "an unknown client is refused" 1 "$rc" "fetchers/fetcher.sh --client bogus URL OUT"
+check "the refusal makes no request" 0 "$(awk 'END { print NR + 0 }' "$work/fakecurl/calls")" \
+  "cat \$FAKE_CURL_DIR/calls"
+
+#---------------------------------------------------------------------------#
+# A body the caller already knows the digest of
+#---------------------------------------------------------------------------#
+behaviour 200 good.db
+sha="$(sha256sum "$good_db" | cut -d ' ' -f 1)"
+rc=0
+run --client curl --no-cache --expect db --sha256 "$sha" https://sha.test/base.db "$work/sha.out" > /dev/null 2>&1 || rc=$?
+check "a body with the asked sha256 passes" "0 $(sha256sum "$good_db" | cut -d ' ' -f 1)" \
+  "$rc $(sha256sum "$work/sha.out" | cut -d ' ' -f 1)" \
+  "fetchers/fetcher.sh --sha256 $sha --expect db URL OUT"
+rc=0
+run --client curl --no-cache --expect db --sha256 "$(printf '0%.0s' $(seq 1 64))" https://sha.test/base.db "$work/sha2.out" > /dev/null 2>&1 || rc=$?
+check "a body with another sha256 is refused" 1 "$rc" \
+  "fetchers/fetcher.sh --sha256 000...0 --expect db URL OUT"
+rc=0
+run --client curl --expect any --sha256 zz https://sha.test/base.db "$work/sha3.out" > /dev/null 2>&1 || rc=$?
+check "--sha256 that is not 64 hex characters is refused" 1 "$rc" \
+  "fetchers/fetcher.sh --sha256 zz URL OUT"
+
+#---------------------------------------------------------------------------#
+# A client that hangs is stopped within --timeout
+#---------------------------------------------------------------------------#
+cp "$work/fetchers/curl-impersonate/fetch.sh" "$work/ci-fast.sh"
+cat > "$work/fetchers/curl-impersonate/fetch.sh" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+sleep 30
+EOF
+chmod 0755 "$work/fetchers/curl-impersonate/fetch.sh"
+started=$SECONDS
+rc=0
+run --client curl-impersonate --no-cache --retries 1 --timeout 2 --expect any https://slow.test/a "$work/slow.out" > /dev/null 2>&1 || rc=$?
+took=$((SECONDS - started))
+check "a client that hangs is stopped within --timeout" "1 yes" \
+  "$rc $([ "$took" -lt 15 ] && echo yes || echo "no, $took s")" \
+  "fetchers/fetcher.sh --client curl-impersonate --timeout 2 URL OUT, against a client that sleeps 30 s"
+cp "$work/ci-fast.sh" "$work/fetchers/curl-impersonate/fetch.sh"
+
+#---------------------------------------------------------------------------#
+# Every client is dispatched to its own program, not to another's
+#---------------------------------------------------------------------------#
+: > "$work/dispatch"
+export FAKE_DISPATCH="$work/dispatch"
+mkdir -p "$work/fetchers/playwright/venv/bin"
+cat > "$work/bin/node" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'node %s\n' "$1" >> "${FAKE_DISPATCH:?}"
+out="${@: -1}"
+cp "${FAKE_CI_BODY:?}" "$out"
+EOF
+cat > "$work/fetchers/playwright/venv/bin/python" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'python %s\n' "$1" >> "${FAKE_DISPATCH:?}"
+out="${@: -1}"
+cp "${FAKE_CI_BODY:?}" "$out"
+EOF
+chmod 0755 "$work/bin/node" "$work/fetchers/playwright/venv/bin/python"
+for c in chromium cloak-browser playwright; do
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$work/fetchers/$c/available"
+  chmod 0755 "$work/fetchers/$c/available"
+done
+behaviour 200 good.db
+for c in chromium cloak-browser playwright; do
+  rc=0
+  run --client "$c" --no-cache --expect db "https://$c.test/base.db" "$work/$c.out" > /dev/null 2>&1 || rc=$?
+  check "$c reads the body through its own program" "0 $(sha256sum "$good_db" | cut -d ' ' -f 1)" \
+    "$rc $(sha256sum "$work/$c.out" | cut -d ' ' -f 1)" \
+    "fetchers/fetcher.sh --client $c URL OUT"
+done
+check "chromium runs fetch.mjs through node" 1 \
+  "$(awk '/^node .*chromium\/fetch\.mjs$/ { n++ } END { print n + 0 }' "$work/dispatch")" "cat \$FAKE_DISPATCH"
+check "cloak-browser runs fetch.mjs through node" 1 \
+  "$(awk '/^node .*cloak-browser\/fetch\.mjs$/ { n++ } END { print n + 0 }' "$work/dispatch")" "cat \$FAKE_DISPATCH"
+check "playwright runs fetch.py through its venv python" 1 \
+  "$(awk '/^python .*playwright\/fetch\.py$/ { n++ } END { print n + 0 }' "$work/dispatch")" "cat \$FAKE_DISPATCH"
+
 summary

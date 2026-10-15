@@ -25,11 +25,22 @@ if (!url || !out) {
 }
 const origin = new URL(referer || url).origin;
 const waitS = Number(process.env.CHROME_WAIT || 20);
+const maxMs = Math.max(1000, Number(process.env.FETCHER_MAX_TIME || 300) * 1000);
 
 const browser = await chromium.launch({
   headless: true,
   channel: "chromium",
   args: ["--no-sandbox", "--disable-dev-shm-usage"],
+});
+// The manager also wraps this process in a hard stop; this ends the browser
+// first, so a stopped call leaves no Chromium behind.
+process.on("SIGTERM", async () => {
+  try {
+    await browser.close();
+  } catch {
+    // already closing
+  }
+  process.exit(1);
 });
 let code = 1;
 try {
@@ -47,7 +58,7 @@ try {
   const page = await context.newPage();
 
   try {
-    await page.goto(origin, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(origin, { waitUntil: "domcontentloaded", timeout: Math.min(60000, maxMs) });
     const deadline = Date.now() + waitS * 1000;
     while (Date.now() < deadline) {
       const ready = await page.evaluate(() => document.readyState).catch(() => "");
@@ -58,16 +69,22 @@ try {
     console.error(`chromium: origin visit: ${e.message}`);
   }
 
-  const r = await page.evaluate(async (u) => {
-    const resp = await fetch(u, { credentials: "include", cache: "no-store" });
-    if (resp.status !== 200) return { status: resp.status };
-    const buf = new Uint8Array(await resp.arrayBuffer());
-    let s = "";
-    for (let i = 0; i < buf.length; i += 0x8000) {
-      s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  const r = await page.evaluate(async ({ u, ms }) => {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), ms);
+    try {
+      const resp = await fetch(u, { credentials: "include", cache: "no-store", signal: ac.signal });
+      if (resp.status !== 200) return { status: resp.status };
+      const buf = new Uint8Array(await resp.arrayBuffer());
+      let s = "";
+      for (let i = 0; i < buf.length; i += 0x8000) {
+        s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      }
+      return { status: 200, b64: btoa(s) };
+    } finally {
+      clearTimeout(t);
     }
-    return { status: 200, b64: btoa(s) };
-  }, url);
+  }, { u: url, ms: maxMs });
 
   if (r.status === 404 || r.status === 410) {
     console.error(`chromium: status ${r.status}`);

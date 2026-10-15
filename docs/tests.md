@@ -29,7 +29,7 @@
 | `unit/40-lib.sh` | the decisions of the sync on fixed inputs |
 | `unit/45-dispatch-overdue.sh` | `scripts/dispatch-overdue` starts a workflow only when it is active and overdue |
 | `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all; the synced badge, the times and the one script of the page, and the size table and badges |
-| `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and a faked curl-impersonate: client selection, the per-host fallback order, the structural checks and `fetchers/drift.sh` |
+| `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural and `--sha256` checks, the deadline, the dispatch of each client to its own program, and `fetchers/drift.sh` |
 | `integration/10-pipeline.sh` | the whole mirror against its own registry and upstream |
 | `integration/20-client.sh` | the wrapper against its own registry, through faulty proxies |
 | `worker/10-node.sh` | `node --test 'worker/test/*.test.js'` |
@@ -206,7 +206,11 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/40-lib | `registry_token_file` returns nothing | not ok: `registry: a second process reads the token the first one cached`, and the two after it |
 | unit/40-lib | a refused cached token is not asked for again | not ok: `registry: a cached token the registry refuses is asked for again, once`, `registry: the cache then holds the new token` |
 | unit/40-lib | the `MIRROR_FETCHER` branch removed from `fetch_upstream` | not ok: the three `fetch_upstream: MIRROR_FETCHER ...` assertions |
-| unit/80-fetchers | `body_validate` reads the desc pipeline with `grep -q`, so tar ends by SIGPIPE and `pipefail` reads the whole check as failed | not ok: `a database with an early desc member is read`, and the fetcher logged `bad-body: the archive holds no package desc member` |
+| unit/80-fetchers | `client_run` groups cloak-browser with curl-impersonate and playwright with chromium | not ok: `cloak-browser runs fetch.mjs through node`, `playwright runs fetch.py through its venv python` |
+| unit/80-fetchers | the hard stop removed, so a client that hangs runs to its own end | not ok: `a client that hangs is stopped within --timeout` (the call took over 15 s) |
+| unit/80-fetchers | `--sha256` read but never compared | not ok: `a body with another sha256 is refused` |
+| unit/80-fetchers | `--client` takes a name no build defines | not ok: `an unknown client is refused`, `the refusal makes no request` |
+| unit/80-fetchers | the `body_validate` desc pipeline reads with `grep -q`, so tar ends by SIGPIPE and `pipefail` reads the whole check as failed | not ok: `a database with an early desc member is read`, and the fetcher logged `bad-body: the archive holds no package desc member` |
 | unit/80-fetchers | the host preference is not written after a client reads a host | not ok: `the client that read the host is remembered`, `the next call for that host starts at curl-impersonate` |
 | unit/80-fetchers | a 403 body is taken as an answer | not ok: `a 403 from curl falls back to curl-impersonate` |
 | unit/80-fetchers | `drift.sh` does not read `.tag_name` | not ok: `drift reads the newest release tag`, `drift serves the value from its cache` |
