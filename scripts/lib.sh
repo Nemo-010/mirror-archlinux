@@ -274,19 +274,27 @@ oras_login() {
 # ⚠ GNU tar seeks over a sparse member when extracting to a file and overwrites
 # what it wrote before (riscv64, 2026-09). Extraction goes through a pipe, NUL
 # bytes are dropped, and a record boundary is restored before %FILENAME%.
+#
+# ⚠ GNU tar reads a zstd database only when the zstd program is on PATH; it
+# reads gzip itself. Read the status of tar, not only of the pipeline: without
+# pipefail, or when a later stage succeeds while tar fails, a database tar
+# cannot read would leave 0 records and the caller would take it for empty.
+# A database that does not read is refused, never counted as empty.
 #---------------------------------------------------------------------------#
 db_records() {
-  local db="$1" out="$2" work rc
+  local db="$1" out="$2" work rc i ps
   work="$(mktemp -d)"
-  rc=0
   tar -xOf "$db" --wildcards '*/desc' 2> "$work/tar.err" |
     tr -d '\000' |
-    sed 's/%FILENAME%/\n&/g' > "$work/desc.txt" || rc=$?
-  if [ "$rc" -ne 0 ]; then
-    cat "$work/tar.err" >&2
-    rm -rf "$work"
-    return 1
-  fi
+    sed 's/%FILENAME%/\n&/g' > "$work/desc.txt"
+  ps=("${PIPESTATUS[@]}")
+  for i in "${!ps[@]}"; do
+    if [ "${ps[$i]}" -ne 0 ]; then
+      cat "$work/tar.err" >&2
+      rm -rf "$work"
+      return 1
+    fi
+  done
   rc=0
   awk '
     function flush() {
@@ -312,9 +320,18 @@ db_records() {
   return "$rc"
 }
 
-# db_members DB -> how many package directories the archive holds
+# db_members DB -> how many package directories the archive holds, or a
+# non-zero status when tar cannot read DB
 db_members() {
-  tar -tf "$1" | awk -F / 'NF >= 2 && $2 == "desc" { n++ } END { print n + 0 }'
+  local list members
+  list="$(mktemp)"
+  if ! tar -tf "$1" > "$list"; then
+    rm -f "$list"
+    return 1
+  fi
+  members="$(awk -F / 'NF >= 2 && $2 == "desc" { n++ } END { print n + 0 }' "$list")"
+  rm -f "$list"
+  printf '%s\n' "$members"
 }
 
 # db_validate RECORDS.tsv -> exit 0, or print every bad line and exit 1
@@ -410,6 +427,61 @@ db_check() {
     echo "it holds $members package directories, $records readable records and $unread NUL-only member(s)"
     return 1
   fi
+  return 0
+}
+
+# keyring_files IMAGE PLATFORM DIR -> the pacman keyring files of IMAGE copied
+# into DIR. `create` and `cp` run nothing from the image, so no emulation is
+# needed. CONTAINER_RUNTIME names docker (default) or podman. Exit 1 with a
+# warning when the image cannot be read, so the caller decides what a target
+# without its trust root does.
+keyring_files() {
+  local image="$1" platform="$2" dir="$3" runtime="${CONTAINER_RUNTIME:-docker}"
+  local rc=0 cid="" log
+  log="$(mktemp)" || return 1
+  if ! command -v "$runtime" > /dev/null; then
+    warn "no $runtime on PATH, so the keyring files of $image cannot be read" \
+      "set CONTAINER_RUNTIME to a container runtime that can pull $image"
+    rm -f "$log"
+    return 1
+  fi
+  mkdir -p "$dir" || { rm -f "$log"; return 1; }
+  timeout --kill-after=30 600 "$runtime" pull --platform "$platform" "$image" > "$log" 2>&1 || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    cid="$(timeout 120 "$runtime" create --platform "$platform" "$image" true)" || rc=$?
+  fi
+  if [ "$rc" -eq 0 ]; then
+    timeout 120 "$runtime" cp "$cid:/usr/share/pacman/keyrings/." "$dir/" > "$log" 2>&1 || rc=$?
+    timeout 60 "$runtime" rm "$cid" > /dev/null || rc=$?
+    cid=""
+  fi
+  if [ -n "$cid" ]; then
+    timeout 60 "$runtime" rm "$cid" > /dev/null || log "could not remove container $cid"
+  fi
+  if [ "$rc" -ne 0 ]; then
+    warn "could not read the keyring files of $image (status $rc): $(tail -n 1 "$log")" \
+      "reproduce: $runtime pull --platform $platform $image && $runtime create --platform $platform $image true"
+    rm -f "$log"
+    return 1
+  fi
+  rm -f "$log"
+  return 0
+}
+
+# sig_check SIGNATURE DATA DIR -> 0 when gpgv accepts SIGNATURE for DATA with
+# the .gpg keyrings in DIR. Each keyring is its own --keyring, so a signature
+# of any key of any of them passes. Absolute paths: gpgv reads a relative
+# keyring name inside its own home.
+sig_check() {
+  local sig="$1" data="$2" dir="$3" f
+  local -a keys=()
+  command -v gpgv > /dev/null || return 1
+  for f in "$dir"/*.gpg; do
+    [ -f "$f" ] || continue
+    keys+=(--keyring "$f")
+  done
+  [ "${#keys[@]}" -gt 0 ] || return 1
+  gpgv --quiet "${keys[@]}" "$sig" "$data" || return 1
   return 0
 }
 
@@ -771,6 +843,17 @@ fetch_upstream() {
   if [ -n "${3:-}" ]; then
     max=(--max-time "$3" --retry-max-time "$3")
     limit=(timeout -k 5 "$(($3 + 5))")
+  fi
+  # MIRROR_FETCHER names another reader (fetchers/fetcher.sh): it picks a
+  # client, keeps its own deadlines and states absence with 4, as curl does.
+  if [ -n "${MIRROR_FETCHER:-}" ]; then
+    rc=0
+    "${limit[@]}" "$MIRROR_FETCHER" --quiet --expect any "$url" "$outfile" || rc=$?
+    case "$rc" in
+      0) return 0 ;;
+      4) rm -f "$outfile"; return 4 ;;
+      *) rm -f "$outfile"; return 1 ;;
+    esac
   fi
   code="$("${limit[@]}" curl -q --location --silent --show-error --max-redirs 5 \
     --proto "$UPSTREAM_PROTO" --proto-redir "$UPSTREAM_PROTO" \

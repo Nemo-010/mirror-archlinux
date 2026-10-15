@@ -45,8 +45,8 @@ Source: pacman v7.1.0 (commit 5683f847), read from source. Also pacman 7.1.0.r9.
 | fact | date | source |
 | --- | --- | --- |
 | `Authorization: Bearer QQ==` gives 200 on a public manifest and blob | 2026-10-13 | curl against ghcr.io |
-| no Authorization header gives 401 with a Bearer challenge | 2026-10-14 | curl against ghcr.io |
-| an unknown bearer gives 403 with no challenge | 2026-10-13 | curl against ghcr.io |
+| no Authorization header gives 401 with a `WWW-Authenticate` header | 2026-10-14 | curl against ghcr.io |
+| an unknown bearer gives 403 with no `WWW-Authenticate` header | 2026-10-13 | curl against ghcr.io |
 | `Bearer QQ==` for a repository that does not exist gives 404 `MANIFEST_UNKNOWN` | 2026-10-14 | curl against ghcr.io |
 | a blob GET gives 307 to a signed URL on `pkg-containers.githubusercontent.com`; that URL needs no Authorization | 2026-10-13 | curl against ghcr.io |
 | a Range request on a blob gives 206; a resumed download was byte-identical | 2026-10-14 | curl against ghcr.io, a 199 MiB blob |
@@ -77,7 +77,7 @@ GHCR latency from one host. Host: Windows, Git Bash, curl 8.21.0 over HTTP/1.1, 
 
 ## GitHub Actions and Pages
 
-Source: GitHub docs, read from github/docs at commit d67ced72, and `gh api` reads of the organisation. Date: 2026-10-14.
+Source: GitHub's own REST API documentation, and `gh api` reads of the organisation. Date: 2026-10-14.
 
 | fact | value |
 | --- | --- |
@@ -173,6 +173,25 @@ Source: each database downloaded from a `db_server` and read with `scripts/lib.s
 | the newest `%BUILDDATE%` of a database is not monotonic: archived core of 10-02 and 10-03 share it, and so do 10-10 and 10-11 | 2026-10-13 | the Arch Linux archive |
 | over eleven pairs of consecutive days (10-01 to 10-12), the newer core never had an older package | 2026-10-13 | the Arch Linux archive |
 | a superseded file is gone from every Arch mirror within a day, in `os/` and `pool/` | 2026-10-13 | the mirrors |
+
+### ArchPOWER (the PowerPC targets)
+
+Source: `fetchers/fetcher.sh` and `curl` against
+`https://repo.archlinuxpower.org` from a residential network, 2026-10-15,
+unless the row says otherwise.
+
+| fact | date | source |
+| --- | --- | --- |
+| one host, `https://repo.archlinuxpower.org` | 2026-10-15 | the directory index at `/` |
+| `[base]` at `base/<arch>` for powerpc64le, powerpc64 and powerpc, and `[base-any]` at `base/any`; `testing/` also exists | 2026-10-15 | the directory indexes at `/base/` and `/testing/` |
+| every `<repo>.db.sig` answers 200, for `base` of all three arches and for `base-any` | 2026-10-15 | `fetchers/fetcher.sh --expect sig` on each URL |
+| the databases are zstd (magic `28 b5 2f fd`), not gzip | 2026-10-15 | `od -An -tx1 -N4` on each `.db` |
+| the four databases hold: powerpc64le 3735 packages, 16.5 GiB, 0 `%PGPSIG%`; powerpc64 3533, 14.3 GiB, 0; powerpc 3551, 12.9 GiB, 157; `base-any` 2200, 14.0 GiB, 262 | 2026-10-15 | each `desc` member of the four `.db` |
+| the largest package is `ruby-docs-3.4.8-2` 728 MB in each arch, and `texlive-doc-2025.2-2` 3.35 GB in `base-any` | 2026-10-15 | `%CSIZE%` of each `desc` member |
+| `base.db` sizes: powerpc64le 724416 B, powerpc64 684273 B, powerpc 741171 B, `base-any` 504891 B; each passes the `db` check; each `.db.sig` is 119 B and passes the `sig` check | 2026-10-15 | `fetchers/fetcher.sh` |
+| the same URLs answer 403 with an interstitial response from GitHub runner addresses | 2026-08-28 and 2026-09-18 | reported from GitHub runner addresses; not reproduced from a residential host |
+| the keyring package is `archpower-keyring` (20260408-1), in `base-any` | 2026-10-15 | the package list of `base-any` |
+| `ghcr.io/pkgforge-dev/archlinux:ppc64le`, `:ppc64` and `:ppc` exist; newest dated tags 2026-09-05 | 2026-10-15 | GHCR |
 
 ## The pipeline
 

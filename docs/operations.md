@@ -143,6 +143,10 @@ A sync run can be run again from its page. The two choices do not do the same th
 
 The plan job reads every target's databases from upstream, one target after another, in one job of 30 minutes. `scripts/plan` ends its upstream reads within `PLAN_BUDGET` seconds (1200). Each target gets what is left of the budget, divided by the targets not yet read. A target whose upstream does not answer in time is in error for that run, and its row in the run's table names `PLAN_BUDGET`. The next run reads it again. A target that stays in error raises `stale-<target>` after the tolerance.
 
+### The plan's trust root
+
+With `db_signed = yes` (the ArchPOWER targets), `scripts/plan` checks `<repo>.db.sig` and `<repo>.files.sig` with `gpgv` against the keyring files of the target's `keyring_image` before it uses the database. It copies them out of the image with `create` and `cp` only, so nothing in it runs. `CONTAINER_RUNTIME` names docker (default) or podman; without one those targets are in error, with that reason. The files are cached under `OUT/keyrings/<id>` for the run, so one image is read once. A signature that does not verify goes to error, and the log names the file; plan tries the next `db_server`, like a malformed database. `PLAN_KEYRING_DIR` names a directory of keyring files in place of the image, for a runner that has none.
+
 ## Renovate
 
 `.github/renovate.json` sets the update policy.
@@ -172,6 +176,43 @@ The plan job reads every target's databases from upstream, one target after anot
 ## Secrets
 
 The repository has no secret. Every job uses the workflow's own `GITHUB_TOKEN`. The Worker is deployed by hand with the maintainer's wrangler login.
+
+## The fetchers
+
+`plan` and `mirror` read upstream through `scripts/lib.sh` `fetch_upstream`.
+ArchPOWER answers a GitHub runner with a 403 interstitial, so when a target
+needs a browser the read goes through `fetchers/fetcher.sh` instead. The
+manager is in `fetchers/`; `fetchers/README.md` has the interface, the client
+table and the drift resolver.
+
+Set `MIRROR_FETCHER` to `fetchers/fetcher.sh` and every `fetch_upstream` call
+uses the manager: it tries `curl` first, keeps the client that read each host
+in `FETCHER_CACHE/hosts/`, and falls back to a browser client only when curl
+does not get a body. `4` means the server says the URL is absent, as for curl.
+The installers are `fetchers/install.sh [CLIENT...]`; a client is available
+when its `available` script exits 0, so a host without a browser skips it and
+`--list` says what can run.
+
+A GitHub runner that must read ArchPOWER at plan and mirror time installs
+`curl-impersonate` for the cheap path and `chromium` for the full path:
+
+```yaml
+- run: |
+    fetchers/install.sh curl-impersonate chromium
+    export MIRROR_FETCHER="$PWD/fetchers/fetcher.sh"
+    scripts/plan "$RUNNER_TEMP/plan"
+```
+
+The versions are not pinned: `fetchers/drift.sh` reads each tool's newest
+release and the installers take that tag, so an update is a run, not a commit.
+On a runner, `fetchers/ci.sh [--with-deps] [CLIENT...]` installs the clients,
+requires each one it was asked for to be available, and then runs
+`fetchers/self-check.sh --strict`, which reads a small URL through the manager
+and through every available client. `MIRROR_FETCHER` also carries `--header`
+and `--referer` when an origin needs them.
+`tests/unit/80-fetchers.sh` covers client selection, the fallback order, the
+structural, size, sha256, header and referer checks and the resolver with a
+curl stand-in; a browser client is not started by the tests.
 
 ## Pages
 

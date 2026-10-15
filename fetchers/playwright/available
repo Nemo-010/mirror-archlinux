@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#
+# Can this host run the playwright client here? The invisible_playwright
+# package and its patched Firefox build are both needed.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+py="$HERE/venv/bin/python"
+[ -x "$py" ] || exit 1
+exec "$py" -c 'import invisible_playwright' > /dev/null 2>&1

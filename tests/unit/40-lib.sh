@@ -202,6 +202,46 @@ else
 fi
 
 #---------------------------------------------------------------------------#
+# A database tar cannot read is refused, never counted as empty. The status
+# must come from tar: this shell has no pipefail, and the stages after tar
+# succeed whatever tar does.
+#---------------------------------------------------------------------------#
+printf 'this is not a tar archive' > "$work/notatar.db"
+: > "$work/notatar.tsv"
+rc=0
+in_lib db_records "$work/notatar.db" "$work/notatar.tsv" > /dev/null 2>&1 || rc=$?
+check "db_records refuses a database tar cannot read, and writes no record" "1 0" \
+  "$rc $(awk 'END { print NR + 0 }' "$work/notatar.tsv")" "bash -c '. scripts/lib.sh; db_records DB OUT'"
+rc=0
+why="$(in_lib db_check "$work/notatar.db" "$work/notatar-check.tsv" 2>&1)" || rc=$?
+case "$rc:$why" in
+  1:*"it does not read as a tar archive"*) ok "db_check names a database tar cannot read" ;;
+  *) fail "db_check names a database tar cannot read" "status $rc: $why" "bash -c '. scripts/lib.sh; db_check DB OUT'" ;;
+esac
+
+# A zstd database reads when zstd is on PATH: GNU tar detects the magic.
+# ArchPOWER base and base-any are zstd (magic 28 b5 2f fd); every other
+# target mirrored so far is gzip.
+if command -v zstd > /dev/null 2>&1 && case "$tar_version" in *'GNU tar'*) true ;; *) false ;; esac then
+  d="$work/db-zstd"
+  rm -rf "$d"
+  for p in a b; do
+    mkdir -p "$d/$p-1-1"
+    printf '%%FILENAME%%\n%s-1-1-any.pkg.tar.zst\n\n%%NAME%%\n%s\n\n%%VERSION%%\n1-1\n\n%%ARCH%%\nany\n\n%%SHA256SUM%%\n%s\n\n%%CSIZE%%\n10\n\n%%BUILDDATE%%\n1700000000\n\n' \
+      "$p" "$p" "$SHA" > "$d/$p-1-1/desc"
+  done
+  (cd "$d" && tar --zstd -cf "$work/zstd.db" -- *)
+  rc=0
+  why="$(in_lib db_check "$work/zstd.db" "$work/zstd.tsv" 2>&1)" || rc=$?
+  check "db_check reads a zstd database" "0 2" "$rc $(awk 'END { print NR }' "$work/zstd.tsv")" "bash -c '. scripts/lib.sh; db_check DB OUT' ($why)"
+  rc=0
+  in_lib db_members "$work/zstd.db" > /dev/null 2>&1 || rc=$?
+  check "db_members reads a zstd database" 0 "$rc" "bash -c '. scripts/lib.sh; db_members DB'"
+else
+  ok "skipped: zstd database, because zstd or GNU tar is not here"
+fi
+
+#---------------------------------------------------------------------------#
 # Behind: compared per package by build date. Fixtures are Arch's archived
 # core.db of four days, reduced to name and build date: 10-02 and 10-03 share
 # their newest build date and differ in bytes, and so do 10-10 and 10-11. The
@@ -568,7 +608,7 @@ EOF
   : > "$work/trickle.hits"
   python3 -I "$work/trickle.py" "$work/trickle.hits" > "$work/trickle.port" 2> "$work/trickle.err" &
   trickle_pid=$!
-  trap 'kill "$trickle_pid"; rm -rf "$work"' EXIT
+  trap 'kill "$trickle_pid" 2>/dev/null || true; rm -rf "$work"' EXIT
   port=""
   for _ in $(seq 1 50); do
     port="$(sed -n 1p "$work/trickle.port")"
@@ -579,7 +619,7 @@ EOF
   rc=0
   UPSTREAM_PROTO='=http,https' in_lib fetch_upstream "http://127.0.0.1:$port/big.db" "$work/trickle.out" 3 > /dev/null 2>&1 || rc=$?
   took=$((SECONDS - started))
-  kill "$trickle_pid"
+  kill "$trickle_pid" 2>/dev/null || true
   trap 'rm -rf "$work"' EXIT
   # The server ends by the signal (status 143), as it should.
   wait_rc=0
@@ -589,6 +629,89 @@ EOF
     "status 1, 1 request(s), within 8 s" \
     "status $rc, $(awk 'END { print NR + 0 }' "$work/trickle.hits") request(s), $([ "$took" -lt 8 ] && echo 'within 8 s' || echo "after $took s")" \
     "bash -c '. scripts/lib.sh; UPSTREAM_PROTO==http fetch_upstream http://127.0.0.1:$port/big.db /tmp/out 3' against $work/trickle.py ($(cat "$work/trickle.err"))"
+fi
+
+#---------------------------------------------------------------------------#
+# fetch_upstream: MIRROR_FETCHER replaces curl, and its status is mapped
+#---------------------------------------------------------------------------#
+stub="$work/fetcher-stub"
+cat > "$stub" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out="${@: -1}"
+rc="${STUB_RC:-0}"
+[ "$rc" != 0 ] || printf 'body\n' > "$out"
+exit "$rc"
+EOF
+chmod 0755 "$stub"
+for want in 0 4 1; do
+  rm -f "$work/stub.out"
+  rc=0
+  STUB_RC="$want" bash -c '. "$1"; MIRROR_FETCHER="$2" fetch_upstream https://example.invalid/x.db "$3"' \
+    _ "$LIB" "$stub" "$work/stub.out" > /dev/null 2>&1 || rc=$?
+  wrote=removed
+  [ -f "$work/stub.out" ] && wrote=kept
+  check "fetch_upstream: MIRROR_FETCHER status $want, file $([ "$want" = 0 ] && echo kept || echo removed)" \
+    "$want $([ "$want" = 0 ] && echo kept || echo removed)" "$rc $wrote" \
+    "STUB_RC=$want bash -c '. scripts/lib.sh; MIRROR_FETCHER=$stub fetch_upstream https://example.invalid/x.db OUT'"
+done
+
+#---------------------------------------------------------------------------#
+# sig_check: gpgv against the .gpg keyrings in a directory
+#---------------------------------------------------------------------------#
+if ! command -v gpg > /dev/null || ! command -v gpgv > /dev/null; then
+  ok "skipped: sig_check, because gpg or gpgv is not on PATH"
+else
+  export GNUPGHOME="$work/gnupg"
+  mkdir -p "$GNUPGHOME"
+  chmod 700 "$GNUPGHOME"
+  gpg --batch --quiet --pinentry-mode loopback --passphrase '' \
+    --quick-gen-key 'Mirror Test One <one@mirror.test>' ed25519 sign 1d > /dev/null 2>&1
+  gpg --batch --quiet --pinentry-mode loopback --passphrase '' \
+    --quick-gen-key 'Mirror Test Two <two@mirror.test>' ed25519 sign 1d > /dev/null 2>&1
+  mkdir -p "$work/keys-one" "$work/keys-both" "$work/keys-empty"
+  gpg --batch --quiet --export 'one@mirror.test' > "$work/keys-one/one.gpg"
+  gpg --batch --quiet --export 'two@mirror.test' > "$work/keys-two.gpg.tmp"
+  cp "$work/keys-one/one.gpg" "$work/keys-both/one.gpg"
+  cp "$work/keys-two.gpg.tmp" "$work/keys-both/two.gpg"
+  printf 'a database\n' > "$work/sig.db"
+  printf 'tampered\n' > "$work/sig.db.bad"
+  gpg --batch --quiet --pinentry-mode loopback --passphrase '' -u 'one@mirror.test' \
+    --detach-sign -o "$work/sig.db.one.sig" "$work/sig.db"
+  gpg --batch --quiet --pinentry-mode loopback --passphrase '' -u 'two@mirror.test' \
+    --detach-sign -o "$work/sig.db.two.sig" "$work/sig.db"
+
+  sig_rc_want() {  # sig_rc_want WANT DESC SIG DATA KEYS
+    local want="$1" desc="$2" rc=0
+    shift 2
+    in_lib sig_check "$@" > /dev/null 2>&1 || rc=$?
+    check "$desc" "$want" "$rc" "bash -c '. scripts/lib.sh; sig_check SIG DATA KEYRING-DIR'"
+  }
+  sig_rc_want 0 "sig_check: a signature of a key in the directory passes" \
+    "$work/sig.db.one.sig" "$work/sig.db" "$work/keys-one"
+  sig_rc_want 1 "sig_check: a signature of a key that is not in the directory is refused" \
+    "$work/sig.db.two.sig" "$work/sig.db" "$work/keys-one"
+  sig_rc_want 0 "sig_check: one of two keyrings is enough" \
+    "$work/sig.db.one.sig" "$work/sig.db" "$work/keys-both"
+  sig_rc_want 1 "sig_check: a changed file is refused" \
+    "$work/sig.db.one.sig" "$work/sig.db.bad" "$work/keys-one"
+  sig_rc_want 1 "sig_check: a directory with no .gpg keyring is refused" \
+    "$work/sig.db.one.sig" "$work/sig.db" "$work/keys-empty"
+fi
+
+#---------------------------------------------------------------------------#
+# keyring_files: no container runtime is a refusal, not a crash
+#---------------------------------------------------------------------------#
+rc=0
+CONTAINER_RUNTIME="$work/no-such-runtime" bash -c '. "$1"; shift; keyring_files "$@"' _ "$LIB" \
+  ghcr.io/example.invalid/archlinux:ppc64le linux/ppc64le "$work/kf" > "$work/kf.out" 2>&1 || rc=$?
+check "keyring_files: no container runtime refuses, with status 1" 1 "$rc" \
+  "CONTAINER_RUNTIME=missing bash -c '. scripts/lib.sh; keyring_files IMAGE PLATFORM DIR'"
+if grep -q 'no-such-runtime' "$work/kf.out"; then
+  ok "keyring_files: the refusal names the runtime it did not find"
+else
+  fail "keyring_files: the refusal names the runtime it did not find" "$(sed -n 1,3p "$work/kf.out")" \
+    "CONTAINER_RUNTIME=missing bash -c '. scripts/lib.sh; keyring_files IMAGE PLATFORM DIR'"
 fi
 
 summary

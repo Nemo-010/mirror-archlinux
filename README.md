@@ -10,6 +10,9 @@ Arch Linux and three of its ports, stored on GHCR and checked by pacman before e
 [![armv7h](https://pkgforge-dev.github.io/mirror-archlinux/badges/armv7h.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
 [![loong64](https://pkgforge-dev.github.io/mirror-archlinux/badges/loong64.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
 [![riscv64](https://pkgforge-dev.github.io/mirror-archlinux/badges/riscv64.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
+[![powerpc64le](https://pkgforge-dev.github.io/mirror-archlinux/badges/powerpc64le.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
+[![powerpc64](https://pkgforge-dev.github.io/mirror-archlinux/badges/powerpc64.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
+[![powerpc](https://pkgforge-dev.github.io/mirror-archlinux/badges/powerpc.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
 [![speed](https://pkgforge-dev.github.io/mirror-archlinux/badges/speed.svg)](https://pkgforge-dev.github.io/mirror-archlinux/)
 
 ![Share of upstream files in the mirror, per target](https://pkgforge-dev.github.io/mirror-archlinux/charts/coverage.svg)
@@ -156,6 +159,12 @@ A target is one repository of one architecture. The table comes from `targets/*.
 | loong64 | extra | Arch Linux for Loong64 (LCPU) | archlinux-keyring, archlinux-lcpu-keyring | `loong64/extra` |
 | riscv64 | core | Arch Linux RISC-V | archlinux-keyring | `riscv64/core` |
 | riscv64 | extra | Arch Linux RISC-V | archlinux-keyring | `riscv64/extra` |
+| powerpc64le | base | ArchPOWER | archpower-keyring | `powerpc64le/base` |
+| powerpc64le | base-any | ArchPOWER | archpower-keyring | `powerpc64le/base-any` |
+| powerpc64 | base | ArchPOWER | archpower-keyring | `powerpc64/base` |
+| powerpc64 | base-any | ArchPOWER | archpower-keyring | `powerpc64/base-any` |
+| powerpc | base | ArchPOWER | archpower-keyring | `powerpc/base` |
+| powerpc | base-any | ArchPOWER | archpower-keyring | `powerpc/base-any` |
 
 pacman checks each package against the keyring of its distribution. A consumer needs that keyring in its own pacman keyring. The badges show which targets have a promoted snapshot.
 

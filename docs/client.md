@@ -170,7 +170,7 @@ A file the store does not hold is read alone.
 1. A host with a `,down.<host>` entry misses at once, for a `pkg` or `db` request. A `.sig` request is never skipped: pacman asks for a `.sig` only from the server that served its file.
 2. A URL that is not `oci://` goes to curl (below).
 3. The wrapper reads the manifest. It sends `Authorization: Bearer QQ==`, which GHCR accepts for public packages, and saves a token round trip.
-4. A 401 or 403 makes it read the Bearer challenge and fetch the anonymous pull token once. Manifest and token requests follow no redirect.
+4. A 401 or 403 makes it read the `WWW-Authenticate` header and fetch the anonymous pull token once. Manifest and token requests follow no redirect.
 5. A 303 is asked again once, after 1 s. GHCR answers a reference it cannot parse with 303 to an HTML page.
 6. A manifest asked for by digest must hash to that digest.
 7. Exactly one layer must carry the file's name. A package manifest with no signature layer is an error: pacman tries no other server for a `.sig`.

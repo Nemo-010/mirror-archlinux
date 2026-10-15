@@ -13,6 +13,7 @@ Each rule below keeps this invariant true for one way it could fail.
 | rule | failure it prevents | where |
 | --- | --- | --- |
 | The database comes only from the target's `db_server` hosts, which the distribution runs. Package bytes can come from any `server`. | The databases are unsigned. The source of a database chooses which validly signed packages get installed, old ones too. | `scripts/plan` |
+| With `db_signed = yes`, `<repo>.db.sig` and `<repo>.files.sig` are checked with `gpgv` against the keyring files of `keyring_image` before the database is used. `keyring_files` copies them out of the image with `create` and `cp` only, so nothing in it runs. A signature of another key, of another file, or of bytes that changed is refused like a malformed database, and plan tries the next `db_server`. `PLAN_KEYRING_DIR` names a directory of keyring files in place of the image, for tests. | A signature that proves nothing chooses the database. verify would refuse it only after the whole target was mirrored. | `scripts/plan`, `scripts/lib.sh` `sig_check`, `keyring_files` |
 | Every field of a database is checked against its grammar first. A filename with `/`, a space, a leading `-` or `.`, a control character or a byte above 0x7e refuses the whole database. | A hostile name becomes a path, an option or a tag. | `scripts/lib.sh` `db_validate` |
 | Each package directory gives exactly one record. A `desc` member of NUL bytes only, or empty, is counted and named; at most 16 are accepted. Any other unreadable member refuses the database. | A database that drops packages without a word. An upstream sparse member that holds a target for ever. | `scripts/lib.sh` `db_check` |
 | A file name that `<repo>.files` and `<repo>.db` both name must have one sha256. A files database with another sha256 for a file is refused, and plan tries the next `db_server` that served the same database. Drift is accepted, and plan names each file: packages the files database leaves out, and files only the files database names. More drift than `FILES_DRIFT_MAX` (default the larger of 16 and half the records) is refused: such a files database is of another repository. | Another sha256 means the two databases are of different snapshots. Drift holds no file a consumer downloads: the database alone decides what pacman installs, and upstream's own users get the same drift (`docs/measurements.md`). | `scripts/plan` |
@@ -175,6 +176,8 @@ Server = oci://ghcr.io/pkgforge-dev/mirror-archlinux/<arch>/<repo>@<staged diges
 ```
 
 With `db_signed = yes`, the SigLevel is `Required DatabaseRequired`. With `keyring_from`, and when that target has a `latest`, a second section follows (below).
+
+⚠ The Worker serves `<repo>.db` and `<repo>.db.sig` from `latest` at the time of each request. Across a promotion the two can come from two snapshots, and pacman with `DatabaseRequired` then fails one `-Sy`, until the next `-Sy` reads both from the promoted snapshot. A consumer that must not see that avoids it with the pin form: `Server = .../$arch/$repo@sha256:<digest>`, which names one manifest for both files.
 
 ### The trust root
 

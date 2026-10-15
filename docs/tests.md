@@ -5,7 +5,7 @@
 | suite | files | needs |
 | --- | --- | --- |
 | `static` | `tests/static/*.sh`: shellcheck, actionlint, py_compile and the policy checks | `shellcheck`, `actionlint`, `jq`; `python3` when there is python to compile; `git` for the file modes |
-| `unit` | `tests/unit/*.sh`: the wrapper and the scripts on fixed inputs, with no network | `curl`, `jq`; GNU tar for the database cases; `python3` and `git` for parts of `60-status.sh` |
+| `unit` | `tests/unit/*.sh`: the wrapper and the scripts on fixed inputs, with no network | `curl`, `jq`; GNU tar for the database cases; `python3` and `git` for parts of `60-status.sh`; `gpg`, `gpgv` and GNU tar for `70-plan.sh` |
 | `integration` | `tests/integration/*.sh`: a local registry and pacman in containers, oras on the host | docker or podman (`CONTAINER_RUNTIME`), curl, jq, tar, sha256sum, and network to pull the pinned images and oras |
 | `worker` | `tests/worker/*.sh`: the Worker under `node --test` | node 22 or newer, and `sh` |
 
@@ -28,7 +28,9 @@
 | `unit/32-prefetch-plan.sh` | the argument rewrite, the print lines, the signatures written from `%g`, the size of a held `.part` |
 | `unit/40-lib.sh` | the decisions of the sync on fixed inputs |
 | `unit/45-dispatch-overdue.sh` | `scripts/dispatch-overdue` starts a workflow only when it is active and overdue |
-| `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all; the synced badge, the times and the one script of the page, and the size table and badges |
+| `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all, and one upstream-only ppc target whose database is zstd at `base/$arch`; the synced badge, the times and the one script of the page, and the size table and badges |
+| `unit/70-plan.sh` | `scripts/plan` on a signed repository through the fake curl: a signature the keyring accepts leaves the target pending, and a signature of another key, a signature of the files database used for the database, and a database changed after it was signed refuse it |
+| `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural, `--sha256`, `--max-bytes`, `--header` and `--referer` checks, the HTML refusal, the retry backoff, the availability cache, the deadline, the dispatch of each client to its own program, `fetchers/self-check.sh`, `fetchers/install.sh --check`, the curl-impersonate asset choice, `fetchers/ci.sh` and `fetchers/drift.sh` |
 | `integration/10-pipeline.sh` | the whole mirror against its own registry and upstream |
 | `integration/20-client.sh` | the wrapper against its own registry, through faulty proxies |
 | `worker/10-node.sh` | `node --test 'worker/test/*.test.js'` |
@@ -89,7 +91,7 @@ TESTS_REQUIRE_TOOLS='shellcheck actionlint jq python3' tests/run.sh static
 ⚠ Other tests handle an absent tool in their own way:
 
 - `10-shellcheck.sh`, `20-actionlint.sh` and `worker/10-node.sh` fail when their tool is absent.
-- Parts of `30-wrapper-urls.sh` and `31-run-store.sh` (dash), `40-lib.sh` and `60-status.sh` (GNU tar, git, python3) and `40-executable-bits.sh` (git) print a plain `ok` line that says they skipped. `TESTS_REQUIRE_TOOLS` does not turn these into failures.
+- Parts of `30-wrapper-urls.sh` and `31-run-store.sh` (dash), `40-lib.sh` and `60-status.sh` (GNU tar, git, python3, zstd), `70-plan.sh` (gpg, gpgv, GNU tar) and `40-executable-bits.sh` (git) print a plain `ok` line that says they skipped. `TESTS_REQUIRE_TOOLS` does not turn these into failures.
 - So the `bash-gawk` and `busybox` unit legs pass with parts of `60-status.sh` skipped.
 
 ### Integration options
@@ -177,6 +179,8 @@ The tree itself is never changed. An integration fault runs with its own registr
 | test | fault | observed |
 | --- | --- | --- |
 | unit/40-lib | `decide_push` pushes over a tag that holds other bytes | not ok: `write-once: other bytes under this name are never overwritten` |
+| unit/70-plan | `sig_check` accepts any keyring | not ok: `plan: a signature of a key the keyring does not hold refuses the target`, `plan: the refusal names the file whose signature failed` |
+| unit/70-plan | plan uses the database without checking its signature | not ok: `plan: a signature of the files database does not pass for the database`, `plan: a database changed after it was signed is refused` |
 | integration/10-pipeline | `mirror-file` pushes over a tag that holds other bytes | not ok: `a file whose bytes changed under its own name holds the target` |
 | unit/40-lib | older and newer swapped in the behind rule | not ok: `core of 10-03 is not behind 10-02` |
 | integration/10-pipeline | plan takes a database behind the promoted one | not ok: `an older upstream database is refused as behind` |
@@ -195,6 +199,7 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/40-lib | `db_check` accepts an unreadable member that is not NUL bytes | not ok: `db_check refuses an unreadable member that holds other bytes than NUL, and names it` |
 | unit/40-lib | `db_check` refuses every unreadable member | not ok: `db_check accepts package directories whose desc is NUL bytes or empty, and names them` |
 | unit/40-lib | `db_check` no longer compares records and members | not ok: `db_check refuses a desc that holds two records` |
+| unit/40-lib | `db_records` no longer reads tar's own status: the pipeline keeps `\|\| rc=$?` in a shell without pipefail | not ok: `db_records refuses a database tar cannot read, and writes no record` (`status 0, 0 records`), and `db_check names a database tar cannot read` |
 | unit/40-lib | the `MAX_SHARDS` clamp removed | not ok: `shards: x86_64 extra's seed wants 216 by bytes and gets MAX_SHARDS` |
 | unit/40-lib | batches do not grow to fit `VERIFY_MAX_BATCHES` | not ok: `batches: x86_64 extra's seed wants 54, both limits grow, and it gets 36 to 40` |
 | unit/40-lib | the build date written with no `Z` | not ok: `a build date as ISO 8601 UTC` |
@@ -203,6 +208,24 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/40-lib | the `QQ==` read turned off | not ok: the three `registry:` assertions on the dummy token's 200 and 404 |
 | unit/40-lib | `registry_token_file` returns nothing | not ok: `registry: a second process reads the token the first one cached`, and the two after it |
 | unit/40-lib | a refused cached token is not asked for again | not ok: `registry: a cached token the registry refuses is asked for again, once`, `registry: the cache then holds the new token` |
+| unit/40-lib | the `MIRROR_FETCHER` branch removed from `fetch_upstream` | not ok: the three `fetch_upstream: MIRROR_FETCHER ...` assertions |
+| unit/80-fetchers | `client_run` groups cloak-browser with curl-impersonate and playwright with chromium | not ok: `cloak-browser runs fetch.mjs through node`, `playwright runs fetch.py through its venv python` |
+| unit/80-fetchers | the hard stop removed, so a client that hangs runs to its own end | not ok: `a client that hangs is stopped within --timeout` (the call took over 15 s) |
+| unit/80-fetchers | `--sha256` read but never compared | not ok: `a body with another sha256 is refused` |
+| unit/80-fetchers | `--client` takes a name no build defines | not ok: `an unknown client is refused`, `the refusal makes no request` |
+| unit/80-fetchers | `body_validate any` accepts an HTML document | not ok: `a 200 that is an HTML document is not a body` |
+| unit/80-fetchers | `--max-bytes` read but never compared | not ok: `a body over --max-bytes is refused` |
+| unit/80-fetchers | `retry_delay` never grows | not ok: `retry_delay grows 2, 4, 8 and stops at 30` |
+| unit/80-fetchers | the availability answer is not cached, or `--no-cache` is ignored | not ok: `a client probe is cached for its ttl`, `--no-cache asks the probe again` |
+| unit/80-fetchers | a cached host preference that names no client is used anyway | not ok: `an unknown cached client is ignored` |
+| unit/80-fetchers | `self-check.sh` decides on the manager alone, not on each available client | not ok: `self-check reads the URL through every available client` |
+| unit/80-fetchers | the `body_validate` desc pipeline reads with `grep -q`, so tar ends by SIGPIPE and `pipefail` reads the whole check as failed | not ok: `a database with an early desc member is read`, and the fetcher logged `bad-body: the archive holds no package desc member` |
+| unit/80-fetchers | the host preference is not written after a client reads a host | not ok: `the client that read the host is remembered`, `the next call for that host starts at curl-impersonate` |
+| unit/80-fetchers | a 403 body is taken as an answer | not ok: `a 403 from curl falls back to curl-impersonate` |
+| unit/80-fetchers | `drift.sh` does not read `.tag_name` | not ok: `drift reads the newest release tag`, `drift serves the value from its cache` |
+| unit/80-fetchers | `client_run` drops the headers, so the request carries none | not ok: `an extra header reaches curl` |
+| unit/80-fetchers | `drift.sh` only loads the cached values when the cache is fresh, so a stale cache whose lookup fails moves backwards | not ok: `a lookup that fails keeps the cached value` (rc 1, no value) |
+| unit/80-fetchers | the curl-impersonate asset is the first that matches the architecture, so a musl or libcurl archive can be chosen | not ok: `curl-impersonate picks the CLI gnu asset for this arch` |
 | integration/10-pipeline | the `MAX_SHARDS` clamp removed | not ok: `MAX_SHARDS caps a target's shards`, `the plan logs that the shard cap binds` |
 | integration/10-pipeline | `shard_count` always 1 | not ok: each target gets shards of its own |
 | integration/10-pipeline | the `dev.pkgforge.mirror.upstream` annotation added again | not ok: the package manifest names no upstream server; two writers push byte-identical manifests |
@@ -259,6 +282,7 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/60-status | `BENCH_MAX_AGE` 100 days | 4 not ok, among them `site7: a bench older than 2 days gives the speed badge the warning colour` |
 | unit/60-status | a group with no snapshot is `not mirrored` also when its registry did not answer | 6 not ok, among them `site6: badge all does not say not mirrored` |
 | unit/60-status | `check-staleness` of before the enabled date | not ok: `check-staleness: no latest, added disabled 43 days ago, enabled 1 day ago: new` |
+| unit/60-status | the ppc fixture database built as gzip | not ok: `the ppc fixture database is zstd` |
 | unit/60-status | `SYNCED_GOOD` 4 h | not ok: `synced-5h: 5 h ago is green` |
 | unit/60-status | `SYNCED_LATE` 48 h | not ok: `synced-30h: 30 h ago is 1 d ago, red` |
 | unit/60-status | `fmt_ago` says `30 min`, with no `ago` | not ok: `synced-30m: 30 min ago is green` |
