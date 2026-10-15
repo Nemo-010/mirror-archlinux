@@ -251,6 +251,20 @@ rc=0
 "$work/fetchers/install.sh" --check > /dev/null 2>&1 || rc=$?
 check "install.sh --check with no client asks for the default set" 1 "$rc" "fetchers/install.sh --check"
 
+case "$(uname -m)" in
+  x86_64 | amd64) want="https://example.test/curl-x86_64-linux-gnu.tar.gz" ;;
+  aarch64 | arm64) want="https://example.test/curl-aarch64-linux-gnu.tar.gz" ;;
+  *) want="" ;;
+esac
+if [ -n "$want" ]; then
+  rc=0
+  got="$(CURL_IMPERSONATE_TAG=v-test \
+    CURL_IMPERSONATE_RELEASE_JSON="$REPO_ROOT/tests/fixtures/fetcher/curl-impersonate-release.json" \
+    CURL_IMPERSONATE_PRINT_ASSET=1 "$work/fetchers/curl-impersonate/install.sh" 2> /dev/null)" || rc=$?
+  check "curl-impersonate picks the CLI gnu asset for this arch" "0 $want" "$rc $got" \
+    "CURL_IMPERSONATE_RELEASE_JSON=... CURL_IMPERSONATE_PRINT_ASSET=1 fetchers/curl-impersonate/install.sh"
+fi
+
 behaviour 200 good.db
 : > "$work/fakecurl/calls"
 rc=0

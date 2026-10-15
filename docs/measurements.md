@@ -189,7 +189,7 @@ live host from a residential network, 2026-10-15.
 | powerpc64 base: 3533 files, 14.3 GiB, 0 `%PGPSIG%` | 2026-10-15 | the guide's measurement |
 | powerpc base: 3551 files, 12.9 GiB, 157 `%PGPSIG%` | 2026-10-15 | the guide's measurement |
 | base-any: 2200 files, 14.0 GiB, 262 `%PGPSIG%`, largest `texlive-doc-2025.2-2` 3.35 GB | 2026-10-15 | the guide's measurement |
-| `curl` reads `base.db` of the three arches and of `base-any` with one call each, and each passes the `db` check; each `.db.sig` passes the `sig` check | 2026-10-15 | `fetchers/fetcher.sh` from a residential network |
+| `fetchers/fetcher.sh` reads `base.db` of the three arches (powerpc64le 724416 B, powerpc64 684273 B, powerpc 741171 B) and of `base-any` (504891 B) with one call each, and each passes the `db` check; each `.db.sig` (119 B) passes the `sig` check | 2026-10-15 | `fetchers/fetcher.sh` from a residential network |
 | the same URLs answer 403 with a Cloudflare interstitial from GitHub runner addresses | 2026-08-28 and 2026-09-18 | the guide's measurement, and Nemo-010/archpower-403-poc |
 | the keyring package is `archpower-keyring`, in `base-any` | 2026-10-15 | the guide's notes |
 | `ghcr.io/pkgforge-dev/archlinux:ppc64le`, `:ppc64` and `:ppc` exist; newest dated tags 2026-09-05 | 2026-10-15 | GHCR |

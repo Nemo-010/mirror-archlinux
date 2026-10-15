@@ -145,13 +145,25 @@ manager instead of curl, with no other change:
 
 ```yaml
 - run: |
-    fetchers/install.sh curl-impersonate
+    fetchers/ci.sh --with-deps curl-impersonate chromium   # install and check
     export MIRROR_FETCHER="$PWD/fetchers/fetcher.sh"
     scripts/plan "$RUNNER_TEMP/plan"
 ```
 
-`fetchers/install.sh chromium` also installs the browser, which is what a
-runner needs when the origin answers curl with an interstitial 403.
+`ci.sh` fails the step if a client it was asked for did not install or cannot
+read the check URL, so a runner that would fall back to curl alone tells you
+before the long run. `fetchers/install.sh chromium` installs the browser on its
+own when no check is wanted. Use `fetchers/install.sh --check` to ask what is
+usable here without installing anything.
+
+When the workflow already has the clients and only wants one URL, the manager
+and the drift resolver are the two tools to call:
+
+```sh
+fetchers/install.sh --check                     # what is usable here
+fetchers/fetcher.sh --expect db "$URL" "$OUT"   # read it with the fallback
+fetchers/drift.sh --env                          # the tool versions, for a log
+```
 
 ## Measured
 
@@ -166,6 +178,9 @@ runner needs when the origin answers curl with an interstitial 403.
   deadline, the dispatch of each client to its own program, the availability
   cache and the version resolver are covered without a network or a browser. A
   browser client itself is not started by the tests.
-- `fetchers/self-check.sh` ran against the live ArchPOWER signature from a
-  residential network on 2026-10-15: the manager and `curl` read it; the other
-  clients were not installed here.
+- `fetchers/self-check.sh --strict` ran against the live ArchPOWER signature
+  from a residential network on 2026-10-15: the manager and `curl` read it; the
+  other clients were not installed here. `fetchers/fetcher.sh` read `base.db`
+  of all three arches and of `base-any`, and all four `.db.sig`, with one call
+  each. `fetchers/self-check.sh` re-ran green on 2026-10-15 after the headers,
+  referer, deadline and drift changes.

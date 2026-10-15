@@ -7,6 +7,8 @@
 #   fetchers/curl-impersonate/install.sh
 #
 # Environment: CURL_IMPERSONATE_TAG overrides the release tag (a test or a pin),
+# CURL_IMPERSONATE_RELEASE_JSON reads the release from a file instead of the
+# API, CURL_IMPERSONATE_PRINT_ASSET prints the chosen asset and exits,
 # FETCHER_ALLOW_UNVERIFIED=1 accepts an archive with no checksum file.
 set -euo pipefail
 
@@ -23,9 +25,9 @@ case "$arch" in
   *) fetcher_die "no curl-impersonate build is known for $arch" ;;
 esac
 
-need_net
 tag="${CURL_IMPERSONATE_TAG:-}"
 if [ -z "$tag" ]; then
+  need_net
   tag="$("$HERE/../drift.sh" --key curl-impersonate | cut -f 2)"
 fi
 [ -n "$tag" ] || fetcher_die "could not resolve the curl-impersonate release tag"
@@ -36,19 +38,38 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 release="$work/release.json"
-curl -q --fail --silent --show-error --location --connect-timeout 20 --max-time 120 \
-  --header 'Accept: application/vnd.github+json' \
-  --user-agent 'mirror-archlinux-fetcher (+https://github.com/pkgforge-dev/mirror-archlinux)' \
-  --output "$release" "https://api.github.com/repos/lexiforest/curl-impersonate/releases/tags/$tag" \
-  || fetcher_die "could not read the release $tag"
+if [ -n "${CURL_IMPERSONATE_RELEASE_JSON:-}" ]; then
+  # A fixture, so a test can drive the asset choice with no network.
+  cp "$CURL_IMPERSONATE_RELEASE_JSON" "$release" || fetcher_die "could not read the release fixture"
+else
+  need_net
+  curl -q --fail --silent --show-error --location --connect-timeout 20 --max-time 120 \
+    --header 'Accept: application/vnd.github+json' \
+    --user-agent 'mirror-archlinux-fetcher (+https://github.com/pkgforge-dev/mirror-archlinux)' \
+    --output "$release" "https://api.github.com/repos/lexiforest/curl-impersonate/releases/tags/$tag" \
+    || fetcher_die "could not read the release $tag"
+fi
 
+# Picked deterministically: the CLI archive, not the libcurl library, for this
+# architecture and linux, gnu before musl, and the name breaks any tie. Asset
+# order is not relied on.
 asset_url="$(jq -r --arg re "$arch_re" '
-  [.assets[] | select(.name | test($re))
-   | select(.name | test("linux"))
-   | select(.name | test("debug|symbols|\\.deb|\\.rpm") | not)]
-  | (.[0].browser_download_url // empty)' "$release")"
+  [ .assets[]
+    | select(.name | test("linux"))
+    | select(.name | test($re))
+    | select(.name | test("debug|symbols|\\.deb|\\.rpm|android|freebsd|macos|win32") | not)
+    | select(.name | test("libcurl") | not)
+    | { name: .name, url: .browser_download_url,
+        score: (if (.name | test("gnu")) then 0 else 1 end) }
+  ]
+  | sort_by(.score, .name) | (.[0].url // empty)' "$release")"
 [ -n "$asset_url" ] || fetcher_die "release $tag has no linux $arch asset" \
   "reproduce: curl -s https://api.github.com/repos/lexiforest/curl-impersonate/releases/tags/$tag | jq -r '.assets[].name'"
+
+if [ "${CURL_IMPERSONATE_PRINT_ASSET:-0}" = 1 ]; then
+  printf '%s\n' "$asset_url"
+  exit 0
+fi
 
 sum_url="$(jq -r '
   [.assets[] | select(.name | test("check|sha|SUM"; "i"))][0].browser_download_url // empty' "$release")"
