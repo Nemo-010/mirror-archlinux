@@ -542,7 +542,7 @@ sed 's|/\$arch/\$repo$|/$arch/port-fmiss|; s|/\$arch/\./\$repo$|/$arch/./port-fm
 TARGETS_DIR="$work/targets-fmiss" MIRROR_NAMESPACE=it/fmiss sync fmiss aarch64-port
 check "a files database that leaves out a package of the database is planned" pending "$(state_of fmiss plan aarch64-port)" \
   "read out/fmiss/plan.log"
-if grep -q 'port.files leaves out 1 package(s) of port.db, as upstream serves it: expired-1-1-any.pkg.tar.zst' "$work/out/fmiss/plan.log"; then
+if grep -q 'port.files leaves out package(s) of port.db, as upstream serves it: 1: expired-1-1-any.pkg.tar.zst' "$work/out/fmiss/plan.log"; then
   ok "the plan names the package the files database leaves out"
 else
   fail "the plan names the package the files database leaves out" "read out/fmiss/plan.log"
@@ -564,10 +564,20 @@ rc=0
 TARGETS_DIR="$work/targets-fextra" MIRROR_NAMESPACE=it/fextra "$REPO_ROOT/scripts/plan" "$work/out/fextra" > "$work/out/fextra.log" 2>&1 || rc=$?
 check "a files database that names a package the database does not is planned" pending \
   "$(cat "$work/out/fextra/aarch64-port/state" 2> /dev/null)" "plan exit $rc; read out/fextra.log"
-if grep -q 'port.files names 1 package file(s) that port.db does not, as upstream serves it: stray-1-1-any.pkg.tar.zst' "$work/out/fextra.log"; then
+if grep -q 'port.files names package file(s) that port.db does not, as upstream serves it: 1: stray-1-1-any.pkg.tar.zst' "$work/out/fextra.log"; then
   ok "the plan names the package only the files database names"
 else
   fail "the plan names the package only the files database names" "read out/fextra.log"
+fi
+# More drift than FILES_DRIFT_MAX: the files database is of another repository.
+rc=0
+FILES_DRIFT_MAX=0 TARGETS_DIR="$work/targets-fextra" MIRROR_NAMESPACE=it/fextra "$REPO_ROOT/scripts/plan" "$work/out/fextra0" > "$work/out/fextra0.log" 2>&1 || rc=$?
+check "drift over FILES_DRIFT_MAX is refused" error \
+  "$(cat "$work/out/fextra0/aarch64-port/state" 2> /dev/null)" "plan exit $rc; read out/fextra0.log"
+if grep -q 'port.files differs from port.db by 1 package file(s), over FILES_DRIFT_MAX=0' "$work/out/fextra0.log"; then
+  ok "the refusal names the drift and the limit"
+else
+  fail "the refusal names the drift and the limit" "read out/fextra0.log"
 fi
 
 # The same file name with other bytes: the files database of another snapshot.

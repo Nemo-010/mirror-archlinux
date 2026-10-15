@@ -161,6 +161,7 @@ Source: each database downloaded from a `db_server` and read with `scripts/lib.s
 | Arch Linux ARM aarch64 `aur.files` leaves out `localepurge-0.7.3.4-1`, which `aur.db` names | 2026-10-14 | `scripts/plan` on the upstream databases |
 | Arch Linux ARM aarch64 `alarm.files` leaves out `dkms-mt7601`, `macspoof` and `sprunge`, which `alarm.db` names | 2026-10-14 | Sync run 38591019319, plan |
 | Arch Linux ARM aarch64 `extra.files` names `qemu-system-cris-9.1.2-1` (dropped from `extra.db`) and `findnewest-0.3-4` (its `extra.db` desc is NUL bytes), on fl.us, ca.us and de3 | 2026-10-15 | Sync run 38606900677, plan; `comm` of the two record lists |
+| Arch Linux RISC-V `extra.files` leaves out 934 of the 14716 packages of `extra.db` (no other file, no other sha256); both regenerated at 00:46 UTC. A drift limit of 1% held riscv64 extra on run 38656876449 | 2026-10-15 | `comm` of the two record lists |
 | Seed of 15 targets, run 38606900677: 12 promoted in one run; armv7h extra held by 3 files upstream rebuilt during the run, loong64 extra by 1 file of a shard that reached its 120 min limit, aarch64 extra by its `extra.files` | 2026-10-14 | `latest` manifests on GHCR |
 | loong64 extra: pacman refuses `compiler-rt18-18.1.8-1`, `x11-ssh-askpass-1.2.4.1-8` and `yt6801-dkms-1.0.28-3` (keys expired) and `python-xarray-2026.07.0-1` (no signature anywhere) | 2026-10-14 | pacman 7.1 in `archlinux:base`, `Architecture = loong64` |
 | loong64 extra: 16 packages are signed by a subkey that expires on 2026-12-31 | 2026-10-14 | the signature issuers |

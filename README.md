@@ -231,7 +231,7 @@ These run by themselves:
 - Sync every 3 hours. Status, with the Worker check, every hour. The staleness and schedule checks every day.
 - The scheduled workflows start each other when a newest run is overdue, and keep every schedule enabled.
 - Renovate merges digest, pin, patch and minor updates when every check is green.
-- `worker.yml` deploys the Worker after a push to `main` that changes `worker/`, when the `CLOUDFLARE_API_TOKEN` secret is set.
+- `worker.yml` tests the Worker after a push to `main` that changes `worker/`.
 
 These issues open by themselves. Each one opens once, keeps its body current, and closes when the problem clears:
 
@@ -248,7 +248,7 @@ These need a person:
 - Decide each `replaced-` issue: wait for a new upstream filename, or accept the new bytes.
 - Review and merge the keyring image updates and the major updates from Renovate.
 - Enable Pages once: `gh api -X POST repos/pkgforge-dev/mirror-archlinux/pages -f build_type=workflow`.
-- Set the `CLOUDFLARE_API_TOKEN` secret to deploy the Worker. Without it, nothing is deployed.
+- Deploy a change to `worker/` by hand, after `worker.yml` passes: `cd worker && npx wrangler@4.150.0 deploy` (`docs/worker.md`).
 - Start a workflow by hand when every schedule stops at once. GitHub stops the schedules of a repository after 60 days with no activity.
 
 [docs/operations.md](docs/operations.md) has the schedules, the issues and the settings in full.

@@ -11,7 +11,7 @@ This document tells what runs by itself, which issues the automation raises and 
 | `status.yml` | cron `47 * * * *`, dispatch, and `report` after each sync on `main` | measures the mirror and the Worker, renders the site, pushes branch `status`, deploys Pages, raises or clears `worker-down` |
 | `watchdog.yml` | cron `41 7 * * *`, dispatch | staleness and schedules |
 | `ci.yml` | push to `main`, pull request (not to `status`), dispatch | the test suites |
-| `worker.yml` | push to `main` that changes `worker/**` or the workflow, dispatch | tests and deploys the Worker |
+| `worker.yml` | push to `main` that changes `worker/**` or the workflow, dispatch | tests the Worker; the maintainer deploys it by hand (`docs/worker.md`) |
 
 ### The jobs of the watchdog
 
@@ -118,7 +118,7 @@ Status runs are not an hour apart. The cron runs `status.yml` at minute 47 of ea
 - **A replaced file.** Arch does not publish a filename again with new bytes. So `replaced-<target>` means something unusual upstream or on the registry. The issue names the file and both digests. Wait for upstream to publish a new filename, or accept the new bytes under a new tag.
 - **Renovate.** Merge the keyring image updates and the major updates.
 - **Pages.** Enable Pages once (below).
-- **The Worker.** Set `CLOUDFLARE_API_TOKEN` to deploy it.
+- **The Worker.** Deploy a change to `worker/` by hand, after `worker.yml` passes (`docs/worker.md`).
 - **A disabled workflow.** Enable a workflow that a person disabled, when that decision no longer holds.
 
 Start a sync by hand:
@@ -171,11 +171,7 @@ The plan job reads every target's databases from upstream, one target after anot
 
 ## Secrets
 
-| secret | needed by | without it |
-| --- | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | `worker.yml` job `deploy` | the job shows a notice and ends with success, with no deploy |
-
-Every other job uses the workflow's own `GITHUB_TOKEN`.
+The repository has no secret. Every job uses the workflow's own `GITHUB_TOKEN`. The Worker is deployed by hand with the maintainer's wrangler login.
 
 ## Pages
 

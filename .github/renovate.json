@@ -41,7 +41,7 @@
       "automerge": false
     },
     {
-      "description": "The node image of worker.yml and ci.yml: one pull request, so the Worker is tested in the image that deploys it.",
+      "description": "The node image of worker.yml and ci.yml: one pull request, so ci.yml and worker.yml test the Worker in one image.",
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["docker.io/library/node"],
       "groupName": "node image"

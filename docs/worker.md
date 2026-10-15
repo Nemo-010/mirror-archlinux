@@ -106,22 +106,32 @@ Cloudflare bills Workers by request and by CPU time. Subrequests and egress are 
 
 ## Deploy
 
-`.github/workflows/worker.yml` runs on a push to `main` that changes `worker/**` or the workflow, and on dispatch.
+The maintainer deploys the Worker by hand, from the maintainer's own machine. CI holds no Cloudflare credential and deploys nothing.
+
+`.github/workflows/worker.yml` runs on a push to `main` that changes `worker/**` or the workflow, and on dispatch:
 
 | job | does |
 | --- | --- |
 | `test` | `node --test 'worker/test/*.test.js'` in the pinned `node:24-alpine` image |
-| `deploy` | on `main`, after `test` passed: `cloudflare/wrangler-action` with wrangler `4.150.0` in `worker/`, then `tests/worker/live.sh` up to 3 times, 20 s apart |
 
-⚠ The deploy job needs the `CLOUDFLARE_API_TOKEN` secret. When the secret is empty, the job shows a notice and ends with success, with no deploy. Make the token from the "Edit Cloudflare Workers" template.
+To deploy:
 
-⚠ The live check runs after the deploy. A GHCR or blob host outage then fails the job, and the new version stays deployed. There is no rollback.
-
-Deploy by hand:
+1. Wait for `worker.yml` to pass on `main`.
+2. Deploy with the wrangler login of the maintainer:
 
 ```bash
 cd worker && npx wrangler@4.150.0 deploy
 ```
+
+3. Check the deployed Worker:
+
+```bash
+WORKER_LIVE=1 REPO_ROOT=$PWD bash tests/worker/live.sh
+```
+
+⚠ A new version can take some seconds to reach every data centre. Run the live check again after 20 s before you roll back.
+
+To roll back, deploy the previous version: `npx wrangler@4.150.0 rollback`, or deploy the earlier commit of `worker/`.
 
 Check the configuration with no deploy:
 
@@ -150,6 +160,6 @@ WORKER_LIVE=1 REPO_ROOT=$PWD bash tests/worker/live.sh
 
 ## Trust
 
-The Worker holds no secret. The API token reaches only the `deploy` job: one step checks that it is set, and `wrangler-action` uses it. The account id is in `worker/wrangler.toml`.
+The Worker holds no secret. Only the maintainer's wrangler login can deploy it. The account id is in `worker/wrangler.toml`.
 
 The databases of the mirror are unsigned. A consumer that reads through the Worker trusts the Worker for the database it gets. So the Worker's code, and every account that can deploy it, join the trust root of that consumer. pacman still checks each package's sha256 against the database and each signature against the keyring. A consumer that must not trust Cloudflare reads the registry directly with the wrapper.

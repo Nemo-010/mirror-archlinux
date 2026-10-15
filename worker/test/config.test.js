@@ -48,17 +48,12 @@ test('wrangler.toml sets the compatibility date, the flags, the CPU limit and th
   assert.equal(t['observability.logs'].invocation_logs, 'false');
 });
 
-test('worker.yml tests in a pinned node image and deploys with a pinned wrangler-action', () => {
+test('worker.yml tests in a pinned node image and deploys nothing', () => {
   const wf = read('.github/workflows/worker.yml');
   const image = /# tag: (\d+)-alpine\n\s*image=docker\.io\/library\/node:(\d+)-alpine@sha256:[0-9a-f]{64}\n/.exec(wf);
   assert.ok(image, 'the node image is pinned by digest under a # tag: marker');
   assert.equal(image[1], image[2], 'the marker names the tag of the image line');
   assert.ok(Number(image[2]) >= 22, `node ${image[2]} is 22 or newer`);
   assert.match(wf, /node --test 'worker\/test\/\*\.test\.js'/);
-  assert.match(wf, /uses: cloudflare\/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4\.1\.3\n/);
-  assert.match(wf, /wranglerVersion: "4\.150\.0"/);
-  assert.match(wf, /workingDirectory: worker\n/);
-  assert.match(wf, /apiToken: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
-  assert.match(wf, /if: github\.ref == 'refs\/heads\/main'/);
-  assert.doesNotMatch(wf, /if:.*secrets\./, 'the secret is checked through env, not in if:');
+  assert.doesNotMatch(wf, /wrangler-action|secrets\./, 'the maintainer deploys by hand; CI holds no Cloudflare credential');
 });
