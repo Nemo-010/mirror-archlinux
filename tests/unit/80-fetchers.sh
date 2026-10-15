@@ -85,7 +85,7 @@ run() {
 #---------------------------------------------------------------------------#
 # Which clients can run, and what --list says
 #---------------------------------------------------------------------------#
-got="$("$work/fetchers/fetcher.sh" --list | tr '\n' ' ' | sed 's/ $//')"
+got="$(FETCHER_CACHE="$work/list-cache" "$work/fetchers/fetcher.sh" --list | tr '\n' ' ' | sed 's/ $//')"
 check "fetcher --list names the clients that answer here" "curl curl-impersonate" "$got" \
   "fetchers/fetcher.sh --list"
 
@@ -165,6 +165,18 @@ rc=0
 run --expect sig https://sig.test/x.sig "$work/y.sig" > /dev/null 2>&1 || rc=$?
 check "a body that is not a signature packet is refused" 1 "$rc" \
   "fetchers/fetcher.sh --expect sig URL OUT"
+printf '<!DOCTYPE html>\n<html><body>not the file</body></html>\n' > "$work/fakecurl/page.html"
+printf 'a plain body\n' > "$work/fakecurl/text.txt"
+behaviour 200 page.html
+rc=0
+run --client curl --no-cache --expect any https://page.test/a "$work/page.out" > /dev/null 2>&1 || rc=$?
+check "a 200 that is an HTML document is not a body" 1 "$rc" \
+  "fetchers/fetcher.sh --expect any URL OUT against an origin that answers a page"
+behaviour 200 text.txt
+rc=0
+run --client curl --no-cache --expect any https://text.test/a "$work/text.out" > /dev/null 2>&1 || rc=$?
+check "a body that is not HTML passes --expect any" 0 "$rc" \
+  "fetchers/fetcher.sh --expect any URL OUT"
 
 #---------------------------------------------------------------------------#
 # An explicit client list is used as given
@@ -232,6 +244,54 @@ check "--sha256 that is not 64 hex characters is refused" 1 "$rc" \
   "fetchers/fetcher.sh --sha256 zz URL OUT"
 
 #---------------------------------------------------------------------------#
+# A cap on the body, and the retry backoff
+#---------------------------------------------------------------------------#
+behaviour 200 good.db
+rc=0
+run --client curl --no-cache --expect db --max-bytes 10 https://cap.test/base.db "$work/cap.out" > /dev/null 2>&1 || rc=$?
+check "a body over --max-bytes is refused" 1 "$rc" \
+  "fetchers/fetcher.sh --max-bytes 10 --expect db URL OUT"
+rc=0
+run --client curl --no-cache --expect db --max-bytes 100000000 https://cap.test/base.db "$work/cap2.out" > /dev/null 2>&1 || rc=$?
+check "a body under --max-bytes passes" 0 "$rc" \
+  "fetchers/fetcher.sh --max-bytes 100000000 --expect db URL OUT"
+rc=0
+run --client curl --expect any --max-bytes nope https://cap.test/a "$work/cap3.out" > /dev/null 2>&1 || rc=$?
+check "--max-bytes that is not a number is refused" 1 "$rc" \
+  "fetchers/fetcher.sh --max-bytes nope URL OUT"
+r="$(bash -c '. "$1"; printf "%s %s %s %s" "$(retry_delay 1)" "$(retry_delay 2)" "$(retry_delay 3)" "$(retry_delay 9)"' _ "$REPO_ROOT/fetchers/lib.sh")"
+check "retry_delay grows 2, 4, 8 and stops at 30" "2 4 8 30" "$r" "bash -c '. fetchers/lib.sh; retry_delay 1 2 3 9'"
+
+#---------------------------------------------------------------------------#
+# A client probe is cached, and --no-cache asks again
+#---------------------------------------------------------------------------#
+mkdir -p "$work/fetchers/chromium"
+cat > "$work/fetchers/chromium/available" << EOF
+#!/usr/bin/env bash
+printf 'x' >> "$work/probe-count"
+exit 1
+EOF
+chmod 0755 "$work/fetchers/chromium/available"
+: > "$work/probe-count"
+FETCHER_CACHE="$work/avail-cache" FETCHER_AVAILABLE_TTL=300 "$work/fetchers/fetcher.sh" --list > /dev/null 2>&1
+FETCHER_CACHE="$work/avail-cache" FETCHER_AVAILABLE_TTL=300 "$work/fetchers/fetcher.sh" --list > /dev/null 2>&1
+check "a client probe is cached for its ttl" 1 "$(wc -c < "$work/probe-count" | tr -d ' ')" \
+  "run fetcher.sh --list twice with the same FETCHER_CACHE"
+FETCHER_CACHE="$work/avail-cache" "$work/fetchers/fetcher.sh" --list --no-cache > /dev/null 2>&1
+check "--no-cache asks the probe again" 2 "$(wc -c < "$work/probe-count" | tr -d ' ')" \
+  "run fetcher.sh --list --no-cache"
+
+#---------------------------------------------------------------------------#
+# A cached host preference that names no client is ignored
+#---------------------------------------------------------------------------#
+mkdir -p "$work/cache/hosts"
+printf 'nonsense-client\n' > "$work/cache/hosts/badpref.test"
+pref_out="$(FETCHER_CACHE="$work/cache" "$work/fetchers/fetcher.sh" --explain https://badpref.test/a 2>&1)"
+check "an unknown cached client is ignored" 1 \
+  "$(printf '%s\n' "$pref_out" | awk '/^order: curl curl-impersonate/ { n++ } END { print n + 0 }')" \
+  "fetchers/fetcher.sh --explain URL with a host preference that is not a client"
+
+#---------------------------------------------------------------------------#
 # A client that hangs is stopped within --timeout
 #---------------------------------------------------------------------------#
 cp "$work/fetchers/curl-impersonate/fetch.sh" "$work/ci-fast.sh"
@@ -253,6 +313,11 @@ cp "$work/ci-fast.sh" "$work/fetchers/curl-impersonate/fetch.sh"
 #---------------------------------------------------------------------------#
 # Every client is dispatched to its own program, not to another's
 #---------------------------------------------------------------------------#
+# The tree probes above left a cached answer; ask fresh from here.
+export FETCHER_AVAILABLE_TTL=0
+# self-check.sh calls fetcher.sh directly, so the stand-ins need these.
+export FAKE_CI_BODY="$good_db"
+export FAKE_CI_CALLS="$work/ci.calls"
 : > "$work/dispatch"
 export FAKE_DISPATCH="$work/dispatch"
 mkdir -p "$work/fetchers/playwright/venv/bin"
@@ -289,5 +354,11 @@ check "cloak-browser runs fetch.mjs through node" 1 \
   "$(awk '/^node .*cloak-browser\/fetch\.mjs$/ { n++ } END { print n + 0 }' "$work/dispatch")" "cat \$FAKE_DISPATCH"
 check "playwright runs fetch.py through its venv python" 1 \
   "$(awk '/^python .*playwright\/fetch\.py$/ { n++ } END { print n + 0 }' "$work/dispatch")" "cat \$FAKE_DISPATCH"
+
+rc=0
+sc="$("$work/fetchers/self-check.sh" --strict https://selfcheck.test/base.db 2>&1)" || rc=$?
+check "self-check reads the URL through every available client" "0 6" \
+  "$rc $(printf '%s\n' "$sc" | awk '/: read it$/ { n++ } END { print n + 0 }')" \
+  "fetchers/self-check.sh --strict https://selfcheck.test/base.db, with five clients that answer"
 
 summary

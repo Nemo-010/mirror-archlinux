@@ -22,6 +22,7 @@
 #                   client name may also be given as --client NAME
 #   --expect KIND   any (default), db, tar or sig: the structural check
 #   --sha256 HEX    the sha256 the body must have, on top of the check above
+#   --max-bytes N   refuse a body larger than N bytes (default 0, no cap)
 #   --retries N     attempts per client (default 2)
 #   --timeout SEC   whole-call deadline of one attempt (default 300)
 #   --connect SEC   connect deadline (default 20)
@@ -49,9 +50,11 @@ want_sha=""
 retries="${FETCHER_RETRIES:-2}"
 timeout_s="${FETCHER_MAX_TIME:-300}"
 connect_s="${FETCHER_CONNECT_TIMEOUT:-20}"
+max_bytes="${FETCHER_MAX_BYTES:-0}"
 use_cache=1
 explain=0
 explain_url=""
+list=0
 positional=()
 
 while [ "$#" -gt 0 ]; do
@@ -71,6 +74,11 @@ while [ "$#" -gt 0 ]; do
       want_sha="$2"
       shift 2
       ;;
+    --max-bytes)
+      [ "$#" -ge 2 ] || fetcher_die "--max-bytes needs a value"
+      max_bytes="$2"
+      shift 2
+      ;;
     --retries)
       [ "$#" -ge 2 ] || fetcher_die "--retries needs a value"
       retries="$2"
@@ -88,13 +96,12 @@ while [ "$#" -gt 0 ]; do
       ;;
     --no-cache)
       use_cache=0
+      FETCHER_NO_AVAILABLE_CACHE=1
       shift
       ;;
     --list)
-      for c in $FETCHER_CLIENTS_DEFAULT; do
-        if client_available "$c"; then printf '%s\n' "$c"; fi
-      done
-      exit 0
+      list=1
+      shift
       ;;
     --explain)
       explain=1
@@ -142,9 +149,21 @@ done
 case "$retries" in
   '' | *[!0-9]* | 0) fetcher_die "--retries must be a positive integer, not '$retries'" ;;
 esac
-case "$timeout_s$connect_s" in
-  *[!0-9]*) fetcher_die "--timeout and --connect must be positive integers" ;;
+case "$timeout_s" in
+  '' | *[!0-9]* | 0) fetcher_die "--timeout must be a positive integer, not '$timeout_s'" ;;
 esac
+case "$connect_s" in
+  '' | *[!0-9]* | 0) fetcher_die "--connect must be a positive integer, not '$connect_s'" ;;
+esac
+case "$max_bytes" in
+  '' | *[!0-9]*) fetcher_die "--max-bytes must be a whole number of bytes, not '$max_bytes'" ;;
+esac
+if [ "$list" -eq 1 ]; then
+  for c in $FETCHER_CLIENTS_DEFAULT; do
+    if client_available "$c"; then printf '%s\n' "$c"; fi
+  done
+  exit 0
+fi
 if [ "$explain" -eq 1 ]; then
   [ "${#positional[@]}" -le 1 ] || fetcher_die "usage: fetchers/fetcher.sh --explain [URL]"
   url="${explain_url:-${positional[0]:-example.invalid}}"
@@ -177,7 +196,7 @@ order_for() {
     printf '%s\n' "$clients"
     return 0
   fi
-  if [ -n "$pref" ]; then
+  if [ -n "$pref" ] && client_known "$pref"; then
     first+=("$pref")
   fi
   for c in $FETCHER_CLIENTS_DEFAULT; do
@@ -223,6 +242,7 @@ trap cleanup EXIT
 
 attempted=0
 absent=0
+last_detail=""
 for client in $order; do
   if ! client_available "$client"; then
     summary_line "$host" "$client" skipped 0 0 "not available"
@@ -237,7 +257,7 @@ for client in $order; do
     rm -f "$body" "$log" "$log.code"
     started="$(date -u +%s)"
     rc=0
-    FETCHER_MAX_TIME="$timeout_s" FETCHER_CONNECT_TIMEOUT="$connect_s" client_run "$client" "$url" "$body" "$log" || rc=$?
+    FETCHER_MAX_TIME="$timeout_s" FETCHER_CONNECT_TIMEOUT="$connect_s" FETCHER_MAX_BYTES="$max_bytes" client_run "$client" "$url" "$body" "$log" || rc=$?
     took=$(( $(date -u +%s) - started ))
     class=0
     status_class "$log" "$rc" || class=$?
@@ -252,19 +272,31 @@ for client in $order; do
     fi
     if [ "$class" -ne 0 ]; then
       summary_line "$host" "$client" failed "$attempt" "$took" "$detail"
-      if [ "$attempt" -lt "$retries" ]; then sleep 2; fi
+      last_detail="$client: $detail"
+      if [ "$attempt" -lt "$retries" ]; then retry_sleep "$attempt"; fi
       continue
+    fi
+    if [ "$max_bytes" -gt 0 ]; then
+      size="$(wc -c < "$body" | tr -d ' ')"
+      if [ "$size" -gt "$max_bytes" ]; then
+        summary_line "$host" "$client" bad-body "$attempt" "$took" "body of $size bytes, over --max-bytes $max_bytes"
+        last_detail="$client: body of $size bytes, over --max-bytes $max_bytes"
+        if [ "$attempt" -lt "$retries" ]; then retry_sleep "$attempt"; fi
+        continue
+      fi
     fi
     why="$(body_validate "$body" "$expect" 2>&1)" || {
       summary_line "$host" "$client" bad-body "$attempt" "$took" "$why"
-      if [ "$attempt" -lt "$retries" ]; then sleep 2; fi
+      last_detail="$client: $why"
+      if [ "$attempt" -lt "$retries" ]; then retry_sleep "$attempt"; fi
       continue
     }
     if [ -n "$want_sha" ]; then
       got_sha="$(body_sha256 "$body")"
       if [ "$got_sha" != "$want_sha" ]; then
         summary_line "$host" "$client" bad-body "$attempt" "$took" "sha256 $got_sha, wanted $want_sha"
-        if [ "$attempt" -lt "$retries" ]; then sleep 2; fi
+        last_detail="$client: sha256 $got_sha, wanted $want_sha"
+        if [ "$attempt" -lt "$retries" ]; then retry_sleep "$attempt"; fi
         continue
       fi
     fi
@@ -289,5 +321,5 @@ done
 if [ "$absent" -eq 1 ]; then
   exit 4
 fi
-fetcher_warn "no client read $url ($attempted attempt(s))"
+fetcher_warn "no client read $url ($attempted attempt(s))${last_detail:+; last: $last_detail}"
 exit 1

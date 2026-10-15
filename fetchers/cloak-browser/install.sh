@@ -21,6 +21,6 @@ fi
 [ -n "$version" ] || fetcher_die "could not resolve the cloakbrowser version"
 
 fetcher_log "installing cloakbrowser@$version"
-npm install --prefix "$HERE" --no-save --no-audit --no-fund "cloakbrowser@$version" ||
+npm install --prefix "$HERE" --no-save --no-package-lock --no-audit --no-fund "cloakbrowser@$version" ||
   fetcher_die "npm could not install cloakbrowser@$version"
 "$HERE/available"

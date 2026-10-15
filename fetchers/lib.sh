@@ -47,7 +47,7 @@ body_magic() {
 }
 
 # body_validate FILE EXPECT -> 0 when FILE is what EXPECT names, else prints why
-#   any   not empty
+#   any   not empty, and not an HTML document
 #   sig   one OpenPGP signature packet, under 64 KiB (lib.sh sig_packet)
 #   db    a tar archive, zstd or gzip, that holds a package desc member
 #   tar   a tar archive, zstd or gzip, whatever its members
@@ -57,7 +57,16 @@ body_validate() {
   size="$(wc -c < "$file" | tr -d ' ')"
   [ "$size" -gt 0 ] || { echo "empty"; return 1; }
   case "$expect" in
-    any) return 0 ;;
+    any)
+      # An origin that answers 200 with a page has not served the file that
+      # was asked for. No database, signature or package file starts with an
+      # HTML document, so this is refused whatever the caller expected.
+      if head -c 4096 -- "$file" | grep -qiE '<!doctype html|<html|</html>'; then
+        echo "an HTML document"
+        return 1
+      fi
+      return 0
+      ;;
     sig)
       first="$(od -An -tx1 -N1 "$file" | tr -d ' \n')"
       if [ "$size" -ge 65536 ]; then echo "signature of $size bytes"; return 1; fi
@@ -90,17 +99,57 @@ body_validate() {
   return 0
 }
 
-# client_available NAME -> 0 when NAME can run here
+# client_available NAME -> 0 when NAME can run here. The answer is kept for
+# FETCHER_AVAILABLE_TTL seconds (default 300; 0 asks every time, and
+# FETCHER_NO_AVAILABLE_CACHE=1 asks every time too), because a browser probe
+# starts node or python and costs more than the fetch it guards.
 client_available() {
-  local name="$1" script
+  local name="$1" script rc=0 stamp now ttl="${FETCHER_AVAILABLE_TTL:-300}" cache
   case "$name" in
     curl) command -v curl > /dev/null 2>&1; return $? ;;
     curl-impersonate | chromium | cloak-browser | playwright) ;;
     *) return 1 ;;
   esac
+  case "$ttl" in
+    '' | *[!0-9]*) ttl=0 ;;
+  esac
+  cache="$FETCHER_CACHE/available/$name"
+  if [ "$ttl" -gt 0 ] && [ "${FETCHER_NO_AVAILABLE_CACHE:-0}" -eq 0 ] && [ -r "$cache" ]; then
+    now="$(date -u +%s)"
+    stamp=""
+    read -r stamp rc < "$cache" || true
+    case "$stamp" in
+      '' | *[!0-9]*) ;;
+      *) [ $((now - stamp)) -lt "$ttl" ] && return "$rc" ;;
+    esac
+  fi
   script="$FETCHER_HOME/$name/available"
-  [ -x "$script" ] || return 1
-  "$script"
+  rc=1
+  if [ -x "$script" ]; then
+    if "$script"; then rc=0; else rc=1; fi
+  fi
+  if [ "$ttl" -gt 0 ] && [ "${FETCHER_NO_AVAILABLE_CACHE:-0}" -eq 0 ] && mkdir -p "$FETCHER_CACHE/available" 2> /dev/null; then
+    printf '%s\t%s\n' "$(date -u +%s)" "$rc" > "$FETCHER_CACHE/available/.$name.$$"
+    mv -f "$FETCHER_CACHE/available/.$name.$$" "$FETCHER_CACHE/available/$name" 2> /dev/null || true
+  fi
+  return "$rc"
+}
+
+# retry_delay ATTEMPT -> the whole seconds to wait before ATTEMPT: 2, 4, 8,
+# 16, then 30. retry_sleep adds up to 0.9 s of jitter, so two callers that
+# back off from the same host do not retry in lockstep.
+retry_delay() {
+  local attempt="$1" delay=2 i=1
+  while [ "$i" -lt "$attempt" ] && [ "$delay" -lt 30 ]; do
+    delay=$((delay * 2))
+    i=$((i + 1))
+  done
+  [ "$delay" -le 30 ] || delay=30
+  printf '%s\n' "$delay"
+}
+
+retry_sleep() {
+  sleep "$(retry_delay "$1").$((RANDOM % 10))"
 }
 
 # client_known NAME -> 0 when NAME is a client this manager can run. A client
@@ -118,15 +167,18 @@ client_known() {
 # stop of FETCHER_MAX_TIME + 5 s, so a browser that hangs ends within the same
 # deadline curl has.
 client_run() {
-  local name="$1" url="$2" out="$3" log="$4" secs="${FETCHER_MAX_TIME:-300}" dead=()
+  local name="$1" url="$2" out="$3" log="$4" secs="${FETCHER_MAX_TIME:-300}" dead=() cap=()
   dead=(timeout -k 5 "$((secs + 5))")
+  if [ "${FETCHER_MAX_BYTES:-0}" -gt 0 ]; then
+    cap=(--max-filesize "$FETCHER_MAX_BYTES")
+  fi
   case "$name" in
     curl)
       curl -q --location --silent --show-error --max-redirs 5 \
         --proto '=https,http' --proto-redir '=https,http' \
         --connect-timeout "${FETCHER_CONNECT_TIMEOUT:-20}" \
         --speed-limit 1024 --speed-time 60 \
-        --max-time "$secs" \
+        --max-time "$secs" "${cap[@]}" \
         --output "$out" --write-out '%{http_code}' "$url" > "$log.code" 2> "$log"
       ;;
     curl-impersonate)

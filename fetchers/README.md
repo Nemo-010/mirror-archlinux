@@ -19,6 +19,7 @@ absent (404 or 410), 1 no client read it or the body failed its check.
 | `--client LIST` | clients to try, in order (comma or space separated) |
 | `--expect KIND` | `any` (default), `db`, `tar` or `sig` |
 | `--sha256 HEX` | the sha256 the body must have, on top of `--expect` |
+| `--max-bytes N` | refuse a body larger than N bytes (default 0, no cap) |
 | `--retries N` | attempts per client (default 2) |
 | `--timeout SEC` | whole-call deadline of one attempt (default 300) |
 | `--connect SEC` | connect deadline (default 20) |
@@ -29,8 +30,11 @@ absent (404 or 410), 1 no client read it or the body failed its check.
 | `--quiet` | no per-attempt line on stderr |
 
 Environment: `FETCHER_CLIENTS` (the order), `FETCHER_CACHE` (the cache root,
-`~/.cache/mirror-archlinux/fetcher` by default), `FETCHER_SUMMARY` (a TSV log of
-every attempt), `FETCHER_QUIET` (`1` for quiet).
+`~/.cache/mirror-archlinux/fetcher` by default), `FETCHER_AVAILABLE_TTL`
+(seconds an availability answer is kept, default 300), `FETCHER_MAX_BYTES`,
+`FETCHER_MAX_TIME`, `FETCHER_CONNECT_TIMEOUT`, `FETCHER_RETRIES`,
+`FETCHER_SUMMARY` (a TSV log of every attempt), `FETCHER_QUIET` (`1` for
+quiet).
 
 The order is `curl curl-impersonate chromium cloak-browser playwright`. curl is
 first, so a host that answers curl costs one curl call. The client that read a
@@ -39,7 +43,17 @@ time, so a host that needs a browser pays for the browser once.
 
 A 403 body is not a body: the client that got it is not an answer, and the next
 client is tried. A 404 or 410 ends the call with status 4, because another
-client would hear the same.
+client would hear the same. `any` also refuses a body that is an HTML
+document: an origin that answers 200 with a page has not served the file.
+
+A failed attempt is retried after 2, 4, 8, 16, then 30 s, each with up to
+0.9 s of jitter, so two callers that back off from one host do not retry in
+lockstep.
+
+An answer to "can this client run here?" is kept for
+`FETCHER_AVAILABLE_TTL` seconds (default 300, `0` to ask every time), because a
+browser probe starts node or python and costs more than the fetch it guards.
+`--no-cache` asks again and ignores the per-host preference.
 
 Every client is wrapped in a hard stop of `--timeout` + 5 s, and the browser
 clients get the same value as a `page.goto` timeout and an abort on the in-page
@@ -79,6 +93,19 @@ A client is available when its `available` script exits 0. `available` for
 `chromium`, `cloak-browser` and `playwright` also checks that node, the
 package and the browser build are present, so `--list` reflects the host.
 
+## Self-check
+
+```
+fetchers/self-check.sh [--strict] [URL]
+```
+
+On a runner or a workstation after `fetchers/install.sh`: it prints the host,
+the client order and each client's availability, reads the URL through the
+manager, and then through each available client on its own. `--strict` exits
+non-zero if any available client did not read the URL; without it the
+manager's answer decides. `URL` defaults to the ArchPOWER powerpc64le database
+signature (119 bytes), and `--expect` follows the suffix.
+
 ## Drift
 
 ```
@@ -116,6 +143,11 @@ runner needs when the origin answers curl with an interstitial 403.
 - 2026-08-28 and 2026-09-18, GitHub runner: the same URLs answer 403 with
   a Cloudflare interstitial. The browser clients exist for that case.
 - The unit tests (`tests/unit/80-fetchers.sh`) run the manager against a curl
-  stand-in and a faked curl-impersonate, so client selection, the fallback
-  order, the structural checks and the version resolver are covered without a
-  network or a browser. A browser client itself is not started by the tests.
+  stand-in and a faked curl-impersonate, node and venv-python, so client
+  selection, the fallback order, the structural, sha256 and size checks, the
+  deadline, the dispatch of each client to its own program, the availability
+  cache and the version resolver are covered without a network or a browser. A
+  browser client itself is not started by the tests.
+- `fetchers/self-check.sh` ran against the live ArchPOWER signature from a
+  residential network on 2026-10-15: the manager and `curl` read it; the other
+  clients were not installed here.

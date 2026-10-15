@@ -24,7 +24,7 @@ while [ "$#" -gt 0 ]; do
       want_code=1
       shift 2
       ;;
-    --max-redirs | --proto | --proto-redir | --connect-timeout | --speed-limit | --speed-time | --max-time | --user-agent | --config | --header)
+    --max-redirs | --proto | --proto-redir | --connect-timeout | --speed-limit | --speed-time | --max-time | --max-filesize | --user-agent | --config | --header)
       # The caller passes these; the tests do not read them.
       shift 2
       ;;

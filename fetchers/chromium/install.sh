@@ -22,7 +22,7 @@ fi
 [ -n "$version" ] || fetcher_die "could not resolve the playwright version"
 
 fetcher_log "installing playwright@$version"
-npm install --prefix "$HERE" --no-save --no-audit --no-fund "playwright@$version" ||
+npm install --prefix "$HERE" --no-save --no-package-lock --no-audit --no-fund "playwright@$version" ||
   fetcher_die "npm could not install playwright@$version"
 "$HERE/node_modules/.bin/playwright" install chromium ||
   fetcher_die "the chromium build could not be installed"

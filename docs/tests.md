@@ -29,7 +29,7 @@
 | `unit/40-lib.sh` | the decisions of the sync on fixed inputs |
 | `unit/45-dispatch-overdue.sh` | `scripts/dispatch-overdue` starts a workflow only when it is active and overdue |
 | `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all; the synced badge, the times and the one script of the page, and the size table and badges |
-| `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural and `--sha256` checks, the deadline, the dispatch of each client to its own program, and `fetchers/drift.sh` |
+| `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural, `--sha256` and `--max-bytes` checks, the HTML refusal, the retry backoff, the availability cache, the deadline, the dispatch of each client to its own program, `fetchers/self-check.sh` and `fetchers/drift.sh` |
 | `integration/10-pipeline.sh` | the whole mirror against its own registry and upstream |
 | `integration/20-client.sh` | the wrapper against its own registry, through faulty proxies |
 | `worker/10-node.sh` | `node --test 'worker/test/*.test.js'` |
@@ -210,6 +210,12 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/80-fetchers | the hard stop removed, so a client that hangs runs to its own end | not ok: `a client that hangs is stopped within --timeout` (the call took over 15 s) |
 | unit/80-fetchers | `--sha256` read but never compared | not ok: `a body with another sha256 is refused` |
 | unit/80-fetchers | `--client` takes a name no build defines | not ok: `an unknown client is refused`, `the refusal makes no request` |
+| unit/80-fetchers | `body_validate any` accepts an HTML document | not ok: `a 200 that is an HTML document is not a body` |
+| unit/80-fetchers | `--max-bytes` read but never compared | not ok: `a body over --max-bytes is refused` |
+| unit/80-fetchers | `retry_delay` never grows | not ok: `retry_delay grows 2, 4, 8 and stops at 30` |
+| unit/80-fetchers | the availability answer is not cached, or `--no-cache` is ignored | not ok: `a client probe is cached for its ttl`, `--no-cache asks the probe again` |
+| unit/80-fetchers | a cached host preference that names no client is used anyway | not ok: `an unknown cached client is ignored` |
+| unit/80-fetchers | `self-check.sh` decides on the manager alone, not on each available client | not ok: `self-check reads the URL through every available client` |
 | unit/80-fetchers | the `body_validate` desc pipeline reads with `grep -q`, so tar ends by SIGPIPE and `pipefail` reads the whole check as failed | not ok: `a database with an early desc member is read`, and the fetcher logged `bad-body: the archive holds no package desc member` |
 | unit/80-fetchers | the host preference is not written after a client reads a host | not ok: `the client that read the host is remembered`, `the next call for that host starts at curl-impersonate` |
 | unit/80-fetchers | a 403 body is taken as an answer | not ok: `a 403 from curl falls back to curl-impersonate` |
