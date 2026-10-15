@@ -789,6 +789,17 @@ fetch_upstream() {
     max=(--max-time "$3" --retry-max-time "$3")
     limit=(timeout -k 5 "$(($3 + 5))")
   fi
+  # MIRROR_FETCHER names another reader (fetchers/fetcher.sh): it picks a
+  # client, keeps its own deadlines and states absence with 4, as curl does.
+  if [ -n "${MIRROR_FETCHER:-}" ]; then
+    rc=0
+    "${limit[@]}" "$MIRROR_FETCHER" --quiet --expect any "$url" "$outfile" || rc=$?
+    case "$rc" in
+      0) return 0 ;;
+      4) rm -f "$outfile"; return 4 ;;
+      *) rm -f "$outfile"; return 1 ;;
+    esac
+  fi
   code="$("${limit[@]}" curl -q --location --silent --show-error --max-redirs 5 \
     --proto "$UPSTREAM_PROTO" --proto-redir "$UPSTREAM_PROTO" \
     --connect-timeout 20 --speed-limit 4096 --speed-time 60 "${max[@]}" \

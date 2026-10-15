@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+#
+# Install the maintained curl-impersonate fork (lexiforest/curl-impersonate)
+# into dist/, next to this file. The release is the newest one the project
+# publishes; the archive is checked against the release's own checksum file.
+#
+#   fetchers/curl-impersonate/install.sh
+#
+# Environment: CURL_IMPERSONATE_TAG overrides the release tag (a test or a pin),
+# FETCHER_ALLOW_UNVERIFIED=1 accepts an archive with no checksum file.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib.sh
+. "$HERE/../lib.sh"
+
+need_net() { command -v curl > /dev/null || fetcher_die "curl is required"; }
+
+arch="$(uname -m)"
+case "$arch" in
+  x86_64 | amd64) arch_re='x86_64|amd64' ;;
+  aarch64 | arm64) arch_re='aarch64|arm64' ;;
+  *) fetcher_die "no curl-impersonate build is known for $arch" ;;
+esac
+
+need_net
+tag="${CURL_IMPERSONATE_TAG:-}"
+if [ -z "$tag" ]; then
+  tag="$("$HERE/../drift.sh" --key curl-impersonate | cut -f 2)"
+fi
+[ -n "$tag" ] || fetcher_die "could not resolve the curl-impersonate release tag"
+
+work="$(mktemp -d)"
+# shellcheck disable=SC2329 # run by the EXIT trap
+cleanup() { rm -rf "$work"; }
+trap cleanup EXIT
+
+release="$work/release.json"
+curl -q --fail --silent --show-error --location --connect-timeout 20 --max-time 120 \
+  --header 'Accept: application/vnd.github+json' \
+  --user-agent 'mirror-archlinux-fetcher (+https://github.com/pkgforge-dev/mirror-archlinux)' \
+  --output "$release" "https://api.github.com/repos/lexiforest/curl-impersonate/releases/tags/$tag" \
+  || fetcher_die "could not read the release $tag"
+
+asset_url="$(jq -r --arg re "$arch_re" '
+  [.assets[] | select(.name | test($re))
+   | select(.name | test("linux"))
+   | select(.name | test("debug|symbols|\\.deb|\\.rpm") | not)]
+  | (.[0].browser_download_url // empty)' "$release")"
+[ -n "$asset_url" ] || fetcher_die "release $tag has no linux $arch asset" \
+  "reproduce: curl -s https://api.github.com/repos/lexiforest/curl-impersonate/releases/tags/$tag | jq -r '.assets[].name'"
+
+sum_url="$(jq -r '
+  [.assets[] | select(.name | test("check|sha|SUM"; "i"))][0].browser_download_url // empty' "$release")"
+
+name="$(basename "$asset_url")"
+curl -q --fail --silent --show-error --location --connect-timeout 20 --max-time 600 \
+  --user-agent 'mirror-archlinux-fetcher (+https://github.com/pkgforge-dev/mirror-archlinux)' \
+  --output "$work/$name" "$asset_url" || fetcher_die "could not download $asset_url"
+
+if [ -n "$sum_url" ]; then
+  curl -q --fail --silent --show-error --location --connect-timeout 20 --max-time 120 \
+    --user-agent 'mirror-archlinux-fetcher (+https://github.com/pkgforge-dev/mirror-archlinux)' \
+    --output "$work/checksums" "$sum_url" || fetcher_die "could not download the checksums of $tag"
+  want="$(awk -v n="$name" '$2 == n || $2 == "*" n { print $1 }' "$work/checksums" | sed -n 1p)"
+  [ -n "$want" ] || fetcher_die "the checksum file of $tag names no $name"
+  got="$(sha256sum "$work/$name" | cut -d ' ' -f 1)"
+  [ "$want" = "$got" ] || fetcher_die "$name is sha256 $got, the release says $want"
+  fetcher_log "checked $name against the release checksum"
+elif [ "${FETCHER_ALLOW_UNVERIFIED:-0}" != 1 ]; then
+  fetcher_die "release $tag publishes no checksum file; set FETCHER_ALLOW_UNVERIFIED=1 to accept it"
+fi
+
+rm -rf "$HERE/dist"
+mkdir -p "$HERE/dist"
+tar -xf "$work/$name" -C "$HERE/dist" --strip-components=1 2> /dev/null ||
+  tar -xf "$work/$name" -C "$HERE/dist"
+fetcher_log "installed $tag into $HERE/dist"
+"$HERE/available"

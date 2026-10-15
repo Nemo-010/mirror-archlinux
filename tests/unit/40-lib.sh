@@ -631,4 +631,29 @@ EOF
     "bash -c '. scripts/lib.sh; UPSTREAM_PROTO==http fetch_upstream http://127.0.0.1:$port/big.db /tmp/out 3' against $work/trickle.py ($(cat "$work/trickle.err"))"
 fi
 
+#---------------------------------------------------------------------------#
+# fetch_upstream: MIRROR_FETCHER replaces curl, and its status is mapped
+#---------------------------------------------------------------------------#
+stub="$work/fetcher-stub"
+cat > "$stub" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out="${@: -1}"
+rc="${STUB_RC:-0}"
+[ "$rc" != 0 ] || printf 'body\n' > "$out"
+exit "$rc"
+EOF
+chmod 0755 "$stub"
+for want in 0 4 1; do
+  rm -f "$work/stub.out"
+  rc=0
+  STUB_RC="$want" bash -c '. "$1"; MIRROR_FETCHER="$2" fetch_upstream https://example.invalid/x.db "$3"' \
+    _ "$LIB" "$stub" "$work/stub.out" > /dev/null 2>&1 || rc=$?
+  wrote=removed
+  [ -f "$work/stub.out" ] && wrote=kept
+  check "fetch_upstream: MIRROR_FETCHER status $want, file $([ "$want" = 0 ] && echo kept || echo removed)" \
+    "$want $([ "$want" = 0 ] && echo kept || echo removed)" "$rc $wrote" \
+    "STUB_RC=$want bash -c '. scripts/lib.sh; MIRROR_FETCHER=$stub fetch_upstream https://example.invalid/x.db OUT'"
+done
+
 summary

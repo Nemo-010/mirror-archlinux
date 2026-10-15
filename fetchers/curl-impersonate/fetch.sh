@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# Retrieve a URL with curl-impersonate (BoringSSL): one HTTP profile of a real
+# browser, so the request carries that browser's TLS and HTTP/2 profile.
+#
+#   fetchers/curl-impersonate/fetch.sh URL OUT
+#
+# Environment:
+#   CURL_IMPERSONATE_DIR  the directory of the profile wrappers (default: the
+#                         dist/ beside this file)
+#   CURL_IMPERSONATE_BIN  the wrapper to use (default: the first curl_chrome*)
+#
+# Exit status: 0 read, 4 the server says the URL is absent, 1 anything else.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+dir="${CURL_IMPERSONATE_DIR:-$HERE/dist}"
+
+pick_bin() {
+  local w
+  if [ -n "${CURL_IMPERSONATE_BIN:-}" ]; then
+    printf '%s\n' "$CURL_IMPERSONATE_BIN"
+    return 0
+  fi
+  for w in "$dir"/curl_chrome*; do
+    [ -x "$w" ] || continue
+    basename "$w"
+    return 0
+  done
+  for w in "$dir"/curl_*; do
+    [ -x "$w" ] || continue
+    basename "$w"
+    return 0
+  done
+  return 1
+}
+
+if [ "${1:-}" = "--available" ]; then
+  pick_bin > /dev/null 2>&1
+  exit $?
+fi
+[ "$#" -ge 2 ] || { echo "usage: fetch.sh URL OUT" >&2; exit 2; }
+url="$1"
+out="$2"
+bin="$(pick_bin)" || { echo "curl-impersonate is not installed in $dir" >&2; exit 1; }
+[ -x "$dir/$bin" ] || { echo "no $dir/$bin" >&2; exit 1; }
+
+code=""
+rc=0
+code="$("$dir/$bin" -q --silent --show-error --location --max-redirs 5 \
+  --proto '=https,http' --proto-redir '=https,http' \
+  --connect-timeout "${FETCHER_CONNECT_TIMEOUT:-20}" \
+  --max-time "${FETCHER_MAX_TIME:-300}" \
+  --output "$out" --write-out '%{http_code}' "$url")" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  rm -f "$out"
+  exit 1
+fi
+case "$code" in
+  200) exit 0 ;;
+  404 | 410) rm -f "$out"; exit 4 ;;
+  *) rm -f "$out"; echo "HTTP $code" >&2; exit 1 ;;
+esac

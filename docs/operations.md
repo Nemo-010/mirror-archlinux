@@ -173,6 +173,38 @@ The plan job reads every target's databases from upstream, one target after anot
 
 The repository has no secret. Every job uses the workflow's own `GITHUB_TOKEN`. The Worker is deployed by hand with the maintainer's wrangler login.
 
+## The fetchers
+
+`plan` and `mirror` read upstream through `scripts/lib.sh` `fetch_upstream`.
+ArchPOWER answers a GitHub runner with a 403 interstitial, so when a target
+needs a browser the read goes through `fetchers/fetcher.sh` instead. The
+manager is in `fetchers/`; `fetchers/README.md` has the interface, the client
+table and the drift resolver.
+
+Set `MIRROR_FETCHER` to `fetchers/fetcher.sh` and every `fetch_upstream` call
+uses the manager: it tries `curl` first, keeps the client that read each host
+in `FETCHER_CACHE/hosts/`, and falls back to a browser client only when curl
+does not get a body. `4` means the server says the URL is absent, as for curl.
+The installers are `fetchers/install.sh [CLIENT...]`; a client is available
+when its `available` script exits 0, so a host without a browser skips it and
+`--list` says what can run.
+
+A GitHub runner that must read ArchPOWER at plan and mirror time installs
+`curl-impersonate` for the cheap path and `chromium` for the full path:
+
+```yaml
+- run: |
+    fetchers/install.sh curl-impersonate chromium
+    export MIRROR_FETCHER="$PWD/fetchers/fetcher.sh"
+    scripts/plan "$RUNNER_TEMP/plan"
+```
+
+The versions are not pinned: `fetchers/drift.sh` reads each tool's newest
+release and the installers take that tag, so an update is a run, not a commit.
+`tests/unit/80-fetchers.sh` covers client selection, the fallback order, the
+structural checks and the resolver with a curl stand-in; a browser client is
+not started by the tests.
+
 ## Pages
 
 The site is published with a workflow build: `actions/upload-pages-artifact` in job `build`, then `actions/deploy-pages` in job `deploy`. Only `deploy` has `pages: write` and `id-token: write`.

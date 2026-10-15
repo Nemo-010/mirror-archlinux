@@ -174,6 +174,26 @@ Source: each database downloaded from a `db_server` and read with `scripts/lib.s
 | over eleven pairs of consecutive days (10-01 to 10-12), the newer core never had an older package | 2026-10-13 | the Arch Linux archive |
 | a superseded file is gone from every Arch mirror within a day, in `os/` and `pool/` | 2026-10-13 | the mirrors |
 
+### ArchPOWER (the PowerPC targets)
+
+Source: the guide notes of 2026-10-15, and `fetchers/fetcher.sh` against the
+live host from a residential network, 2026-10-15.
+
+| fact | date | source |
+| --- | --- | --- |
+| one host, `https://repo.archlinuxpower.org`; no second mirror | 2026-10-15 | the ports' `pacman.conf` |
+| `[base]` at `base/$arch` and `[base-any]` at `base/any`, enabled; `testing/` exists and is not enabled | 2026-10-15 | the ports' `pacman.conf` |
+| every `<repo>.db.sig` and `<repo>.files.sig` answers 200, for `base` of all three arches and for `base-any` | 2026-10-15 | `fetchers/fetcher.sh --expect sig` on each URL |
+| the databases are zstd (magic `28 b5 2f fd`), not gzip | 2026-10-15 | `od -An -tx1 -N4` on each `.db` |
+| powerpc64le base: 3735 files, 16.5 GiB, 0 `%PGPSIG%`, largest `ruby-docs-3.4.8-2` 728 MB | 2026-10-15 | the guide's measurement |
+| powerpc64 base: 3533 files, 14.3 GiB, 0 `%PGPSIG%` | 2026-10-15 | the guide's measurement |
+| powerpc base: 3551 files, 12.9 GiB, 157 `%PGPSIG%` | 2026-10-15 | the guide's measurement |
+| base-any: 2200 files, 14.0 GiB, 262 `%PGPSIG%`, largest `texlive-doc-2025.2-2` 3.35 GB | 2026-10-15 | the guide's measurement |
+| `curl` reads `base.db` of the three arches and of `base-any` with one call each, and each passes the `db` check; each `.db.sig` passes the `sig` check | 2026-10-15 | `fetchers/fetcher.sh` from a residential network |
+| the same URLs answer 403 with a Cloudflare interstitial from GitHub runner addresses | 2026-08-28 and 2026-09-18 | the guide's measurement, and Nemo-010/archpower-403-poc |
+| the keyring package is `archpower-keyring`, in `base-any` | 2026-10-15 | the guide's notes |
+| `ghcr.io/pkgforge-dev/archlinux:ppc64le`, `:ppc64` and `:ppc` exist; newest dated tags 2026-09-05 | 2026-10-15 | GHCR |
+
 ## The pipeline
 
 | fact | date | source |
