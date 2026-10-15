@@ -12,7 +12,7 @@
 #
 # KEYS
 #   curl-impersonate      lexiforest/curl-impersonate, the maintained fork
-#   cloak-browser         CloakHQ/CloakBrowser
+#   cloak-browser         the cloakbrowser npm package
 #   invisible-playwright  feder-cr/invisible_playwright
 #   playwright            the playwright npm package
 #
@@ -55,7 +55,7 @@ esac
 drift_sources() {
   cat << 'EOF'
 curl-impersonate	lexiforest/curl-impersonate	release
-cloak-browser	CloakHQ/CloakBrowser	release
+cloak-browser	cloakbrowser	npm
 invisible-playwright	feder-cr/invisible_playwright	release
 playwright	playwright	npm
 EOF
