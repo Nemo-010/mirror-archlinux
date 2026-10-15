@@ -274,19 +274,27 @@ oras_login() {
 # ⚠ GNU tar seeks over a sparse member when extracting to a file and overwrites
 # what it wrote before (riscv64, 2026-09). Extraction goes through a pipe, NUL
 # bytes are dropped, and a record boundary is restored before %FILENAME%.
+#
+# ⚠ GNU tar reads a zstd database only when the zstd program is on PATH; it
+# reads gzip itself. Read the status of tar, not only of the pipeline: without
+# pipefail, or when a later stage succeeds while tar fails, a database tar
+# cannot read would leave 0 records and the caller would take it for empty.
+# A database that does not read is refused, never counted as empty.
 #---------------------------------------------------------------------------#
 db_records() {
-  local db="$1" out="$2" work rc
+  local db="$1" out="$2" work rc i ps
   work="$(mktemp -d)"
-  rc=0
   tar -xOf "$db" --wildcards '*/desc' 2> "$work/tar.err" |
     tr -d '\000' |
-    sed 's/%FILENAME%/\n&/g' > "$work/desc.txt" || rc=$?
-  if [ "$rc" -ne 0 ]; then
-    cat "$work/tar.err" >&2
-    rm -rf "$work"
-    return 1
-  fi
+    sed 's/%FILENAME%/\n&/g' > "$work/desc.txt"
+  ps=("${PIPESTATUS[@]}")
+  for i in "${!ps[@]}"; do
+    if [ "${ps[$i]}" -ne 0 ]; then
+      cat "$work/tar.err" >&2
+      rm -rf "$work"
+      return 1
+    fi
+  done
   rc=0
   awk '
     function flush() {
@@ -312,9 +320,18 @@ db_records() {
   return "$rc"
 }
 
-# db_members DB -> how many package directories the archive holds
+# db_members DB -> how many package directories the archive holds, or a
+# non-zero status when tar cannot read DB
 db_members() {
-  tar -tf "$1" | awk -F / 'NF >= 2 && $2 == "desc" { n++ } END { print n + 0 }'
+  local list members
+  list="$(mktemp)"
+  if ! tar -tf "$1" > "$list"; then
+    rm -f "$list"
+    return 1
+  fi
+  members="$(awk -F / 'NF >= 2 && $2 == "desc" { n++ } END { print n + 0 }' "$list")"
+  rm -f "$list"
+  printf '%s\n' "$members"
 }
 
 # db_validate RECORDS.tsv -> exit 0, or print every bad line and exit 1

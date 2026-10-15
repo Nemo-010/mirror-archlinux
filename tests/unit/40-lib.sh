@@ -202,6 +202,46 @@ else
 fi
 
 #---------------------------------------------------------------------------#
+# A database tar cannot read is refused, never counted as empty. The status
+# must come from tar: this shell has no pipefail, and the stages after tar
+# succeed whatever tar does.
+#---------------------------------------------------------------------------#
+printf 'this is not a tar archive' > "$work/notatar.db"
+: > "$work/notatar.tsv"
+rc=0
+in_lib db_records "$work/notatar.db" "$work/notatar.tsv" > /dev/null 2>&1 || rc=$?
+check "db_records refuses a database tar cannot read, and writes no record" "1 0" \
+  "$rc $(awk 'END { print NR + 0 }' "$work/notatar.tsv")" "bash -c '. scripts/lib.sh; db_records DB OUT'"
+rc=0
+why="$(in_lib db_check "$work/notatar.db" "$work/notatar-check.tsv" 2>&1)" || rc=$?
+case "$rc:$why" in
+  1:*"it does not read as a tar archive"*) ok "db_check names a database tar cannot read" ;;
+  *) fail "db_check names a database tar cannot read" "status $rc: $why" "bash -c '. scripts/lib.sh; db_check DB OUT'" ;;
+esac
+
+# A zstd database reads when zstd is on PATH: GNU tar detects the magic.
+# ArchPOWER base and base-any are zstd (magic 28 b5 2f fd); every other
+# target mirrored so far is gzip.
+if command -v zstd > /dev/null 2>&1 && case "$tar_version" in *'GNU tar'*) true ;; *) false ;; esac then
+  d="$work/db-zstd"
+  rm -rf "$d"
+  for p in a b; do
+    mkdir -p "$d/$p-1-1"
+    printf '%%FILENAME%%\n%s-1-1-any.pkg.tar.zst\n\n%%NAME%%\n%s\n\n%%VERSION%%\n1-1\n\n%%ARCH%%\nany\n\n%%SHA256SUM%%\n%s\n\n%%CSIZE%%\n10\n\n%%BUILDDATE%%\n1700000000\n\n' \
+      "$p" "$p" "$SHA" > "$d/$p-1-1/desc"
+  done
+  (cd "$d" && tar --zstd -cf "$work/zstd.db" -- *)
+  rc=0
+  why="$(in_lib db_check "$work/zstd.db" "$work/zstd.tsv" 2>&1)" || rc=$?
+  check "db_check reads a zstd database" "0 2" "$rc $(awk 'END { print NR }' "$work/zstd.tsv")" "bash -c '. scripts/lib.sh; db_check DB OUT' ($why)"
+  rc=0
+  in_lib db_members "$work/zstd.db" > /dev/null 2>&1 || rc=$?
+  check "db_members reads a zstd database" 0 "$rc" "bash -c '. scripts/lib.sh; db_members DB'"
+else
+  ok "skipped: zstd database, because zstd or GNU tar is not here"
+fi
+
+#---------------------------------------------------------------------------#
 # Behind: compared per package by build date. Fixtures are Arch's archived
 # core.db of four days, reduced to name and build date: 10-02 and 10-03 share
 # their newest build date and differ in bytes, and so do 10-10 and 10-11. The

@@ -195,6 +195,7 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/40-lib | `db_check` accepts an unreadable member that is not NUL bytes | not ok: `db_check refuses an unreadable member that holds other bytes than NUL, and names it` |
 | unit/40-lib | `db_check` refuses every unreadable member | not ok: `db_check accepts package directories whose desc is NUL bytes or empty, and names them` |
 | unit/40-lib | `db_check` no longer compares records and members | not ok: `db_check refuses a desc that holds two records` |
+| unit/40-lib | `db_records` no longer reads tar's own status: the pipeline keeps `\|\| rc=$?` in a shell without pipefail | not ok: `db_records refuses a database tar cannot read, and writes no record` (`status 0, 0 records`), and `db_check names a database tar cannot read` |
 | unit/40-lib | the `MAX_SHARDS` clamp removed | not ok: `shards: x86_64 extra's seed wants 216 by bytes and gets MAX_SHARDS` |
 | unit/40-lib | batches do not grow to fit `VERIFY_MAX_BATCHES` | not ok: `batches: x86_64 extra's seed wants 54, both limits grow, and it gets 36 to 40` |
 | unit/40-lib | the build date written with no `Z` | not ok: `a build date as ISO 8601 UTC` |
