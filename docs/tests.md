@@ -28,7 +28,7 @@
 | `unit/32-prefetch-plan.sh` | the argument rewrite, the print lines, the signatures written from `%g`, the size of a held `.part` |
 | `unit/40-lib.sh` | the decisions of the sync on fixed inputs |
 | `unit/45-dispatch-overdue.sh` | `scripts/dispatch-overdue` starts a workflow only when it is active and overdue |
-| `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all; the synced badge, the times and the one script of the page, and the size table and badges |
+| `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all, and one upstream-only ppc target whose database is zstd at `base/$arch`; the synced badge, the times and the one script of the page, and the size table and badges |
 | `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural, `--sha256`, `--max-bytes`, `--header` and `--referer` checks, the HTML refusal, the retry backoff, the availability cache, the deadline, the dispatch of each client to its own program, `fetchers/self-check.sh`, `fetchers/install.sh --check`, the curl-impersonate asset choice, `fetchers/ci.sh` and `fetchers/drift.sh` |
 | `integration/10-pipeline.sh` | the whole mirror against its own registry and upstream |
 | `integration/20-client.sh` | the wrapper against its own registry, through faulty proxies |
@@ -90,7 +90,7 @@ TESTS_REQUIRE_TOOLS='shellcheck actionlint jq python3' tests/run.sh static
 ⚠ Other tests handle an absent tool in their own way:
 
 - `10-shellcheck.sh`, `20-actionlint.sh` and `worker/10-node.sh` fail when their tool is absent.
-- Parts of `30-wrapper-urls.sh` and `31-run-store.sh` (dash), `40-lib.sh` and `60-status.sh` (GNU tar, git, python3) and `40-executable-bits.sh` (git) print a plain `ok` line that says they skipped. `TESTS_REQUIRE_TOOLS` does not turn these into failures.
+- Parts of `30-wrapper-urls.sh` and `31-run-store.sh` (dash), `40-lib.sh` and `60-status.sh` (GNU tar, git, python3, zstd) and `40-executable-bits.sh` (git) print a plain `ok` line that says they skipped. `TESTS_REQUIRE_TOOLS` does not turn these into failures.
 - So the `bash-gawk` and `busybox` unit legs pass with parts of `60-status.sh` skipped.
 
 ### Integration options
@@ -279,6 +279,7 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/60-status | `BENCH_MAX_AGE` 100 days | 4 not ok, among them `site7: a bench older than 2 days gives the speed badge the warning colour` |
 | unit/60-status | a group with no snapshot is `not mirrored` also when its registry did not answer | 6 not ok, among them `site6: badge all does not say not mirrored` |
 | unit/60-status | `check-staleness` of before the enabled date | not ok: `check-staleness: no latest, added disabled 43 days ago, enabled 1 day ago: new` |
+| unit/60-status | the ppc fixture database built as gzip | not ok: `the ppc fixture database is zstd` |
 | unit/60-status | `SYNCED_GOOD` 4 h | not ok: `synced-5h: 5 h ago is green` |
 | unit/60-status | `SYNCED_LATE` 48 h | not ok: `synced-30h: 30 h ago is 1 d ago, red` |
 | unit/60-status | `fmt_ago` says `30 min`, with no `ago` | not ok: `synced-30m: 30 min ago is green` |

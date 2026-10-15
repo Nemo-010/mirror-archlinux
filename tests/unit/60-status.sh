@@ -74,6 +74,10 @@ pkg() {
 mkdb() {
   (cd "$1" && tar -czf "$2" -- *)
 }
+# mkdbz DIR DB: the database with a zstd stream, as ArchPOWER publishes
+mkdbz() {
+  (cd "$1" && tar --zstd -cf "$2" -- *)
+}
 # mirror ARCH REPO DB FETCHED [CREATED]: the db as the blob latest names;
 # with CREATED, latest names it as org.opencontainers.image.created, as oras
 # does
@@ -127,6 +131,18 @@ for t in aarch64-core loong64-core; do
   pkg "$work/up/$t" glibc 2.42-1 "${t%%-*}" 2000 "$B"
 done
 
+# powerpc64le-base: upstream only, at base/$arch, and the database is zstd
+pkg "$work/up/powerpc64le-base" kernel 6.17-1 powerpc64le 1000 "$B"
+pkg "$work/up/powerpc64le-base" musl 1.2.5-1 powerpc64le 2000 "$B"
+mkdir -p "$net/up.test/base/powerpc64le"
+zstd_ok=0
+if tar --zstd -cf /dev/null /dev/null 2> /dev/null; then
+  zstd_ok=1
+  mkdbz "$work/up/powerpc64le-base" "$net/up.test/base/powerpc64le/base.db"
+else
+  mkdb "$work/up/powerpc64le-base" "$net/up.test/base/powerpc64le/base.db"
+fi
+
 for t in x86_64-core x86_64-extra aarch64-core loong64-core; do
   a="${t%%-*}" r="${t#*-}"
   mkdir -p "$net/up.test/$a/$r"
@@ -145,6 +161,28 @@ bash -c 'set -o pipefail; . "$1"; db_records "$2" "$3"' _ "$REPO_ROOT/scripts/li
 if [ "$rc" -eq 0 ] && [ "$(awk 'END { print NR }' "$work/probe.tsv")" != 4 ]; then
   rc=1
   printf 'db_records read %s record(s), not 4\n' "$(awk 'END { print NR }' "$work/probe.tsv")" >> "$work/probe.err"
+fi
+# The same for the zstd database, so a build without zstd skips rather than
+# reads it as empty.
+zrc=0
+if [ "$zstd_ok" -eq 1 ]; then
+  check "the ppc fixture database is zstd" 28b52ffd \
+    "$(od -An -tx1 -N4 "$net/up.test/base/powerpc64le/base.db" | tr -d ' \n')" \
+    "od -An -tx1 -N4 \$FAKE_CURL_ROOT/up.test/base/powerpc64le/base.db"
+  bash -c 'set -o pipefail; . "$1"; db_records "$2" "$3"' _ "$REPO_ROOT/scripts/lib.sh" \
+    "$net/up.test/base/powerpc64le/base.db" "$work/probe-zstd.tsv" > "$work/probe-zstd.err" 2>&1 || zrc=$?
+  if [ "$zrc" -eq 0 ] && [ "$(awk 'END { print NR }' "$work/probe-zstd.tsv")" != 2 ]; then
+    zrc=1
+    printf 'db_records read %s record(s) from the zstd database, not 2\n' \
+      "$(awk 'END { print NR }' "$work/probe-zstd.tsv")" >> "$work/probe-zstd.err"
+  fi
+  if [ "$zrc" -ne 0 ]; then
+    ok "skipped: status-collect, because db_records cannot read the zstd database ($(sed -n 1p "$work/probe-zstd.err"))"
+    summary
+    exit $?
+  fi
+else
+  ok "skipped: the zstd database, because zstd is not on PATH"
 fi
 if [ "$rc" -ne 0 ]; then
   ok "skipped: status-collect, because db_records cannot read a database with this tar ($(sed -n 1p "$work/probe.err"))"
@@ -173,6 +211,7 @@ printf '500\n' > "$net/bad.test/x86_64/multilib/multilib.db.code"
   target x86_64 multilib 'db_server = https://bad.test/$arch/$repo'
   target aarch64 core 'db_server = https://up.test/$arch/$repo'
   target loong64 core 'db_server = https://down.test/$arch/$repo' 'db_server = https://up.test/$arch/$repo'
+  target powerpc64le base 'db_server = https://up.test/$repo/$arch'
   target riscv64 core 'db_server = https://up.test/$arch/$repo' 'enabled = no'
 }
 
@@ -203,7 +242,7 @@ q() {
 
 check "status.json is schema 1" 1 "$(q .schema)" "jq .schema OUT/status.json"
 check "every enabled target, sorted; a disabled one is left out" \
-  "aarch64-core loong64-core x86_64-core x86_64-extra x86_64-multilib" \
+  "aarch64-core loong64-core powerpc64le-base x86_64-core x86_64-extra x86_64-multilib" \
   "$(q '[.targets[].target] | join(" ")')" "jq '.targets[].target' OUT/status.json"
 check "the sync interval is read from sync.yml's cron" \
   "$("$REPO_ROOT/scripts/cron-tolerance" --minutes "$REPO_ROOT/.github/workflows/sync.yml")" \
@@ -252,9 +291,9 @@ T='.targets[] | select(.target == "x86_64-multilib")'
 check "x86_64-multilib: no db_server answers: upstream not read, coverage unknown" "false HTTP 500 null" \
   "$(q "$T | \"\(.upstream.ok) \(.upstream.tried[0].result) \(.coverage)\"")" "jq '$T' OUT/status.json"
 
-check "summary: 5 targets, 2 promoted, 1 current, 7 of 13 files" "5 2 1 7 13" \
+check "summary: 6 targets, 2 promoted, 1 current, 7 of 15 files" "6 2 1 7 15" \
   "$(q '.summary | "\(.targets) \(.promoted) \(.current) \(.mirrored_files) \(.upstream_files)"')" "jq .summary OUT/status.json"
-check "summary: the sums count 4 measured targets; x86_64-multilib is not read upstream" "4 0" \
+check "summary: the sums count 5 measured targets; x86_64-multilib is not read upstream" "5 0" \
   "$(q '.summary | "\(.measured) \(.mirror_unread)"')" "jq .summary OUT/status.json"
 check "mirror.created is latest's org.opencontainers.image.created, the fraction cut; null when latest names none" \
   "2026-10-14T00:30:00Z null" \
@@ -354,7 +393,7 @@ rm "$net/ghcr.io/v2/test/mirror/x86_64/extra/manifests/latest.code"
 check "a registry that answers 503 for one target: the collect measures and exits 0" 0 "$rc" "$RP"
 check "x86_64-extra: latest answers 503: mirror state error, coverage unknown" "error null" \
   "$(q '.targets[] | select(.target == "x86_64-extra") | "\(.mirror.state) \(.coverage)"')" "jq .targets OUT/status.json"
-check "summary: 1 promoted, 3 measured, 1 not read from the registry, 4 of 8 files" "1 3 1 4 8" \
+check "summary: 1 promoted, 4 measured, 1 not read from the registry, 4 of 10 files" "1 4 1 4 10" \
   "$(q '.summary | "\(.promoted) \(.measured) \(.mirror_unread) \(.mirrored_files) \(.upstream_files)"')" "jq .summary OUT/status.json"
 check "history: x86_64-extra keeps its last measured files, marked carried" "5 3 1500 600 1" \
   "$(jq -rs '.[-1].x["x86_64-extra"] | "\(.n) \(.m) \(.b) \(.mb) \(.k)"' "$out/history.jsonl")" "tail -n 1 OUT/history.jsonl | jq ."
@@ -373,7 +412,7 @@ rc=0
 collect "$out" "$((NOW + 3600))" || rc=$?
 mv "$net/ghcr.io.off" "$net/ghcr.io"
 check "a registry that does not resolve: the collect measures and exits 0" 0 "$rc" "$RP"
-check "summary: no registry read: 0 promoted, 5 not read, 0 measured, every sum unknown" "0 5 0 null null null null null" \
+check "summary: no registry read: 0 promoted, 6 not read, 0 measured, every sum unknown" "0 6 0 null null null null null" \
   "$(q '.summary | "\(.promoted) \(.mirror_unread) \(.measured) \(.mirrored_files) \(.upstream_files) \(.mirrored_bytes) \(.upstream_bytes) \(.coverage_files)"')" \
   "jq .summary OUT/status.json"
 check "summary: no registry read: last_synced is unknown" null "$(q .summary.last_synced)" "jq .summary OUT/status.json"
@@ -801,7 +840,7 @@ spec() {
   jq -nc --argjson charts "$CHARTS" --argjson cases "$1" --argjson history "$2" --argjson speed "$3" \
     --argjson over "$over" '{
     charts: $charts, bench_cases: $cases, history: $history,
-    svgs: (($charts | length) * 2 + 15),
+    svgs: (($charts | length) * 2 + 18),
     files: (["index.html", "status.json", "history.json", "bench.json"]
             + ($charts | map("charts/\(.).svg")) + ($charts | map("charts/narrow/\(.).svg"))),
     badges: {
@@ -810,33 +849,36 @@ spec() {
       "x86_64-multilib": ["x86_64-multilib", "not mirrored"],
       "aarch64-core": ["aarch64-core", "not mirrored"],
       "loong64-core": ["loong64-core", "not mirrored"],
+      "powerpc64le-base": ["powerpc64le-base", "not mirrored"],
       "x86_64": ["x86_64", "77.7%", "3.0 h", "2 of 3 measured"],
       "aarch64": ["aarch64", "not mirrored"],
       "loong64": ["loong64", "not mirrored"],
-      "all": ["mirror", "53.8%", "2/5 repos", "4 of 5 measured"],
+      "powerpc64le": ["powerpc64le", "not mirrored"],
+      "all": ["mirror", "46.6%", "2/6 repos", "5 of 6 measured"],
       "synced": ["synced", "2 h ago"],
       "size": ["size", "2.4 KiB"],
       "size-x86_64": ["x86_64 size", "2.4 KiB"],
       "size-aarch64": ["aarch64 size", "not mirrored"],
       "size-loong64": ["loong64 size", "not mirrored"],
+      "size-powerpc64le": ["powerpc64le size", "not mirrored"],
       "speed": $speed},
     badges_without: {"x86_64-core": ["measured"], "speed": ["ago", "date unknown"], "size": ["measured"]},
     chart_text: {
-      coverage: ["Coverage by repository", "53.8%", "in 4 of 5 repositories", "x86_64", "aarch64", "loong64", "core", "extra", "multilib", "upstream only"],
+      coverage: ["Coverage by repository", "46.6%", "in 5 of 6 repositories", "x86_64", "aarch64", "loong64", "powerpc64le", "core", "extra", "multilib", "base", "upstream only"],
       freshness: ["Snapshot age", "3.0 h", "sync every 3 h", "not mirrored yet", "matches upstream"],
-      size: ["Size by repository", "GiB", "in 4 of 5 repositories", "x86_64 · 1.6 KiB of 2.4 KiB, 2 of 3 measured",
-             "aarch64 · 0 B of 2.9 KiB", "loong64 · 0 B of 2.9 KiB"],
+      size: ["Size by repository", "GiB", "in 5 of 6 repositories", "x86_64 · 1.6 KiB of 2.4 KiB, 2 of 3 measured",
+             "aarch64 · 0 B of 2.9 KiB", "loong64 · 0 B of 2.9 KiB", "powerpc64le · 0 B of 2.9 KiB"],
       "history-coverage": ["Coverage, last 30 days", "x86_64", "aarch64", "Time, UTC"],
       "history-age": ["Snapshot age, last 30 days", "sync every 3 h", "log scale"]},
     page_text: ([
-      "over the 4 of 5 repositories measured in this run. 1 could not be read.",
-      "of 13 upstream, in 4 of 5 repositories",
+      "over the 5 of 6 repositories measured in this run. 1 could not be read.",
+      "of 15 upstream, in 5 of 6 repositories",
       "Failed probes in 2 runs in a row, over 50 minutes or more, open the worker-down issue.",
       "Measured 2026-10-14 03:00 UTC", "The mirror last changed at 2026-10-14 00:30 UTC",
       "so the synced badge says 2 h ago.",
       "x86_64-core ok 100% 4 4 0 0.00 3.0 h 2 h ago 0 min 2026-10-14 00:00 UTC",
       "epsilon-1-1-x86_64.pkg.tar.zst 0.00 3.0 h 3 h ago 1.0 h 2026-10-14 00:00 UTC",
-      "A sum counts only the repositories read on that side: upstream in 4 of 5."]
+      "A sum counts only the repositories read on that side: upstream in 5 of 6."]
       + ($over.page_text_more // []))}
     * ($over | del(.page_text_more))'
 }
@@ -881,20 +923,20 @@ render "$in5" "$work/site5" "$(spec 0 2 '["pacman speed", "no data"]' '{
     "x86_64-core": ["x86_64-core", "100%", "4.0 h"],
     "x86_64-extra": ["x86_64-extra", "unknown"],
     "x86_64": ["x86_64", "100%", "4.0 h", "1 of 3 measured"],
-    "all": ["mirror", "50%", "1/5 repos", "3 of 5 measured"],
+    "all": ["mirror", "40%", "1/6 repos", "4 of 6 measured"],
     "synced": ["synced", "3 h ago"],
-    "size": ["size", "1000 B", "4 of 5 measured"],
+    "size": ["size", "1000 B", "5 of 6 measured"],
     "size-x86_64": ["x86_64 size", "1000 B", "2 of 3 measured"]},
   "badges_without": {"size": []},
   "chart_text": {
-    "coverage": ["Coverage by repository", "50%", "in 3 of 5 repositories", "registry not read"],
+    "coverage": ["Coverage by repository", "40%", "in 4 of 6 repositories", "registry not read"],
     "freshness": ["Snapshot age", "4.0 h", "sync every 3 h", "not mirrored yet", "matches upstream"],
-    "size": ["Size by repository", "in 3 of 5 repositories", "x86_64 · 1000 B of 1000 B, 1 of 3 measured"]},
+    "size": ["Size by repository", "in 4 of 6 repositories", "x86_64 · 1000 B of 1000 B, 1 of 3 measured"]},
   "page_text": [
-    "over the 3 of 5 repositories measured in this run. 2 could not be read.",
-    "1 of 4 read", "1 not read from the registry; 1 match upstream now",
+    "over the 4 of 6 repositories measured in this run. 2 could not be read.",
+    "1 of 5 read", "1 not read from the registry; 1 match upstream now",
     "x86_64 2026-10-14 03:00 UTC 77.7% 77.7%",
-    "A sum counts only the repositories read on that side: the mirror in 4 of 5 and upstream in 4 of 5."]}')"
+    "A sum counts only the repositories read on that side: the mirror in 5 of 6 and upstream in 5 of 6."]}')"
 
 # No registry read at all (run6): every group is unknown, never "not
 # mirrored", and no sum reads as 0.
@@ -906,10 +948,12 @@ render "$in6" "$work/site6" "$(spec 0 2 '["pacman speed", "no data"]' '{
     "x86_64-core": ["x86_64-core", "unknown"], "x86_64-extra": ["x86_64-extra", "unknown"],
     "x86_64-multilib": ["x86_64-multilib", "unknown"], "aarch64-core": ["aarch64-core", "unknown"],
     "loong64-core": ["loong64-core", "unknown"],
+    "powerpc64le-base": ["powerpc64le-base", "unknown"],
     "x86_64": ["x86_64", "unknown"], "aarch64": ["aarch64", "unknown"], "loong64": ["loong64", "unknown"],
+    "powerpc64le": ["powerpc64le", "unknown"],
     "all": ["mirror", "unknown"], "synced": ["synced", "unknown"], "size": ["size", "unknown"],
     "size-x86_64": ["x86_64 size", "unknown"], "size-aarch64": ["aarch64 size", "unknown"],
-    "size-loong64": ["loong64 size", "unknown"]},
+    "size-loong64": ["loong64 size", "unknown"], "size-powerpc64le": ["powerpc64le size", "unknown"]},
   "badges_without": {"x86_64": ["not mirrored"], "all": ["not mirrored"], "size": ["not mirrored"],
                      "size-x86_64": ["not mirrored"]},
   "chart_text": {
@@ -918,7 +962,7 @@ render "$in6" "$work/site6" "$(spec 0 2 '["pacman speed", "no data"]' '{
     "size": ["Size by repository", "unknown"]},
   "page_text": [
     "Coverage is not known: no repository could be read on both sides in this run.",
-    "the registry did not answer for any of the 5", "Files in the mirror unknown",
+    "the registry did not answer for any of the 6", "Files in the mirror unknown",
     "Size in the mirror unknown"]}')"
 
 # A bench from 2026-08-01, 73 days before the measurement: the badge and the
