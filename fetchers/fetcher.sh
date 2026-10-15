@@ -234,7 +234,12 @@ summary_line() {
 }
 
 if [ "$explain" -eq 1 ]; then
-  ehost="$(host_of "${explain_url:-$url}")"
+  eurl="${explain_url:-$url}"
+  ehost="$(host_of "$eurl")"
+  printf 'url: %s\n' "$eurl"
+  printf 'host: %s\n' "$ehost"
+  cached="$(cat "$FETCHER_CACHE/hosts/$ehost" 2> /dev/null || true)"
+  printf 'preferred: %s\n' "${cached:-none}"
   printf 'order: %s\n' "$(order_for "$ehost")"
   for c in $FETCHER_CLIENTS_DEFAULT; do
     if client_available "$c"; then

@@ -91,8 +91,10 @@ The dispatch is one program per client, and no two clients share one:
 | `cloak-browser` | [CloakHQ/CloakBrowser](https://github.com/CloakHQ/CloakBrowser), a Chromium build with its client profile set in the engine | `fetchers/cloak-browser/install.sh` |
 | `playwright` | [feder-cr/invisible_playwright](https://github.com/feder-cr/invisible_playwright) | `fetchers/playwright/install.sh` |
 
-`fetchers/install.sh [CLIENT...]` runs the installers. With no argument it
-installs every client. The installers write into this tree, and
+`fetchers/install.sh [--check] [CLIENT...]` runs the installers. With no
+argument it installs every client. `--check` installs nothing: it reports each
+asked client's availability, with a fresh probe, and exits 0 only when every
+one of them is available. The installers write into this tree, and
 `fetchers/.gitignore` keeps their build products out of the repository.
 
 A client is available when its `available` script exits 0. `available` for

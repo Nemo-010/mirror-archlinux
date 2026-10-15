@@ -187,7 +187,7 @@ client_run() {
   fi
   case "$name" in
     curl)
-      curl -q --location --silent --show-error --max-redirs 5 \
+      "${dead[@]}" curl -q --location --silent --show-error --max-redirs 5 \
         --proto '=https,http' --proto-redir '=https,http' \
         --connect-timeout "${FETCHER_CONNECT_TIMEOUT:-20}" \
         --speed-limit 1024 --speed-time 60 \

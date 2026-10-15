@@ -234,6 +234,22 @@ explain_out="$(FETCHER_CACHE="$work/cache" "$work/fetchers/fetcher.sh" --explain
 check "--explain names the order and the availability" "1 1" \
   "$(printf '%s\n' "$explain_out" | awk '/^order: curl/ { n++ } END { print n + 0 }') $(printf '%s\n' "$explain_out" | awk -F '\t' '$1 == "curl" && $2 == "available" { n++ } END { print n + 0 }')" \
   "fetchers/fetcher.sh --explain URL"
+check "--explain names the host and no cached preference" 2 \
+  "$(printf '%s\n' "$explain_out" | awk '/^host: explain.test$/ { n++ } /^preferred: none$/ { n++ } END { print n + 0 }')" \
+  "fetchers/fetcher.sh --explain https://explain.test/a"
+
+rc=0
+"$work/fetchers/install.sh" --check curl > /dev/null 2>&1 || rc=$?
+check "install.sh --check passes for an available client" 0 "$rc" "fetchers/install.sh --check curl"
+rc=0
+"$work/fetchers/install.sh" --check chromium > /dev/null 2>&1 || rc=$?
+check "install.sh --check fails for a client that is not installed" 1 "$rc" "fetchers/install.sh --check chromium"
+rc=0
+"$work/fetchers/install.sh" --check bogus > /dev/null 2>&1 || rc=$?
+check "install.sh --check refuses an unknown client" 1 "$rc" "fetchers/install.sh --check bogus"
+rc=0
+"$work/fetchers/install.sh" --check > /dev/null 2>&1 || rc=$?
+check "install.sh --check with no client asks for the default set" 1 "$rc" "fetchers/install.sh --check"
 
 behaviour 200 good.db
 : > "$work/fakecurl/calls"
@@ -389,6 +405,9 @@ check "cloak-browser runs fetch.mjs through node" 1 \
   "$(awk '/^node .*cloak-browser\/fetch\.mjs$/ { n++ } END { print n + 0 }' "$work/dispatch")" "cat \$FAKE_DISPATCH"
 check "playwright runs fetch.py through its venv python" 1 \
   "$(awk '/^python .*playwright\/fetch\.py$/ { n++ } END { print n + 0 }' "$work/dispatch")" "cat \$FAKE_DISPATCH"
+rc=0
+"$work/fetchers/install.sh" --check chromium > /dev/null 2>&1 || rc=$?
+check "install.sh --check passes once the client is available" 0 "$rc" "fetchers/install.sh --check chromium"
 
 rc=0
 sc="$("$work/fetchers/self-check.sh" --strict https://selfcheck.test/base.db 2>&1)" || rc=$?
