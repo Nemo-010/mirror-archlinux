@@ -20,6 +20,8 @@ absent (404 or 410), 1 no client read it or the body failed its check.
 | `--expect KIND` | `any` (default), `db`, `tar` or `sig` |
 | `--sha256 HEX` | the sha256 the body must have, on top of `--expect` |
 | `--max-bytes N` | refuse a body larger than N bytes (default 0, no cap) |
+| `--header H` | an extra request header, `Name: Value`; repeatable |
+| `--referer URL` | the `Referer`, and the page the browser clients visit first |
 | `--retries N` | attempts per client (default 2) |
 | `--timeout SEC` | whole-call deadline of one attempt (default 300) |
 | `--connect SEC` | connect deadline (default 20) |
@@ -54,6 +56,10 @@ An answer to "can this client run here?" is kept for
 `FETCHER_AVAILABLE_TTL` seconds (default 300, `0` to ask every time), because a
 browser probe starts node or python and costs more than the fetch it guards.
 `--no-cache` asks again and ignores the per-host preference.
+
+`--header` and `--referer` reach every client: curl and curl-impersonate get
+them as command-line options, and the browser clients read them from
+`FETCHER_HEADERS` (one `Name: Value` per line) and their third argument.
 
 Every client is wrapped in a hard stop of `--timeout` + 5 s, and the browser
 clients get the same value as a `page.goto` timeout and an abort on the in-page
@@ -109,6 +115,16 @@ signature (119 bytes), and `--expect` follows the suffix.
 ## Drift
 
 ```
+fetchers/ci.sh [--with-deps] [CLIENT...]
+
+Installs the clients on a build runner and checks them: with no argument
+`curl-impersonate` and `chromium`, since those are what reads a host that
+answers curl with an interstitial. Every client asked for must be available
+after its install, and then `self-check.sh --strict` reads a small URL through
+each available client. `--with-deps` passes `--with-deps` to the browser
+installer for the system packages the browser needs. Set `FETCHER_SELFCHECK_URL`
+to check another URL. It exits 0 only when all of that happened.
+
 fetchers/drift.sh [--json | --env] [--key NAME] [--ttl SECONDS] [--force]
 ```
 

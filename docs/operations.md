@@ -201,9 +201,14 @@ A GitHub runner that must read ArchPOWER at plan and mirror time installs
 
 The versions are not pinned: `fetchers/drift.sh` reads each tool's newest
 release and the installers take that tag, so an update is a run, not a commit.
+On a runner, `fetchers/ci.sh [--with-deps] [CLIENT...]` installs the clients,
+requires each one it was asked for to be available, and then runs
+`fetchers/self-check.sh --strict`, which reads a small URL through the manager
+and through every available client. `MIRROR_FETCHER` also carries `--header`
+and `--referer` when an origin needs them.
 `tests/unit/80-fetchers.sh` covers client selection, the fallback order, the
-structural checks and the resolver with a curl stand-in; a browser client is
-not started by the tests.
+structural, size, sha256, header and referer checks and the resolver with a
+curl stand-in; a browser client is not started by the tests.
 
 ## Pages
 

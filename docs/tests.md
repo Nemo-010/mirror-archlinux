@@ -29,7 +29,7 @@
 | `unit/40-lib.sh` | the decisions of the sync on fixed inputs |
 | `unit/45-dispatch-overdue.sh` | `scripts/dispatch-overdue` starts a workflow only when it is active and overdue |
 | `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all; the synced badge, the times and the one script of the page, and the size table and badges |
-| `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural, `--sha256` and `--max-bytes` checks, the HTML refusal, the retry backoff, the availability cache, the deadline, the dispatch of each client to its own program, `fetchers/self-check.sh` and `fetchers/drift.sh` |
+| `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural, `--sha256`, `--max-bytes`, `--header` and `--referer` checks, the HTML refusal, the retry backoff, the availability cache, the deadline, the dispatch of each client to its own program, `fetchers/self-check.sh`, `fetchers/ci.sh` and `fetchers/drift.sh` |
 | `integration/10-pipeline.sh` | the whole mirror against its own registry and upstream |
 | `integration/20-client.sh` | the wrapper against its own registry, through faulty proxies |
 | `worker/10-node.sh` | `node --test 'worker/test/*.test.js'` |
@@ -220,6 +220,8 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/80-fetchers | the host preference is not written after a client reads a host | not ok: `the client that read the host is remembered`, `the next call for that host starts at curl-impersonate` |
 | unit/80-fetchers | a 403 body is taken as an answer | not ok: `a 403 from curl falls back to curl-impersonate` |
 | unit/80-fetchers | `drift.sh` does not read `.tag_name` | not ok: `drift reads the newest release tag`, `drift serves the value from its cache` |
+| unit/80-fetchers | `client_run` drops the headers, so the request carries none | not ok: `an extra header reaches curl` |
+| unit/80-fetchers | `drift.sh` only loads the cached values when the cache is fresh, so a stale cache whose lookup fails moves backwards | not ok: `a lookup that fails keeps the cached value` (rc 1, no value) |
 | integration/10-pipeline | the `MAX_SHARDS` clamp removed | not ok: `MAX_SHARDS caps a target's shards`, `the plan logs that the shard cap binds` |
 | integration/10-pipeline | `shard_count` always 1 | not ok: each target gets shards of its own |
 | integration/10-pipeline | the `dev.pkgforge.mirror.upstream` annotation added again | not ok: the package manifest names no upstream server; two writers push byte-identical manifests |

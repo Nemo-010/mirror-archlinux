@@ -23,6 +23,9 @@
 #   --expect KIND   any (default), db, tar or sig: the structural check
 #   --sha256 HEX    the sha256 the body must have, on top of the check above
 #   --max-bytes N   refuse a body larger than N bytes (default 0, no cap)
+#   --header H      an extra request header, "Name: Value"; repeatable
+#   --referer URL   the Referer header, and the page the browser clients visit
+#                   before the request (default: the URL's own origin)
 #   --retries N     attempts per client (default 2)
 #   --timeout SEC   whole-call deadline of one attempt (default 300)
 #   --connect SEC   connect deadline (default 20)
@@ -51,6 +54,8 @@ retries="${FETCHER_RETRIES:-2}"
 timeout_s="${FETCHER_MAX_TIME:-300}"
 connect_s="${FETCHER_CONNECT_TIMEOUT:-20}"
 max_bytes="${FETCHER_MAX_BYTES:-0}"
+headers=()
+referer=""
 use_cache=1
 explain=0
 explain_url=""
@@ -77,6 +82,20 @@ while [ "$#" -gt 0 ]; do
     --max-bytes)
       [ "$#" -ge 2 ] || fetcher_die "--max-bytes needs a value"
       max_bytes="$2"
+      shift 2
+      ;;
+    --header)
+      [ "$#" -ge 2 ] || fetcher_die "--header needs a value"
+      case "$2" in
+        *:*) ;;
+        *) fetcher_die "--header must be 'Name: Value', not '$2'" ;;
+      esac
+      headers+=("$2")
+      shift 2
+      ;;
+    --referer)
+      [ "$#" -ge 2 ] || fetcher_die "--referer needs a value"
+      referer="$2"
       shift 2
       ;;
     --retries)
@@ -227,6 +246,12 @@ if [ "$explain" -eq 1 ]; then
   exit 0
 fi
 
+if [ "${#headers[@]}" -gt 0 ]; then
+  HEADERS=("${headers[@]}")
+  FETCHER_HEADERS="$(printf '%s\n' "${headers[@]}")"
+  export FETCHER_HEADERS
+fi
+
 host="$(host_of "$url")"
 order="$(order_for "$host")"
 [ -n "${order// /}" ] || fetcher_die "no client can run here" "reproduce: fetchers/fetcher.sh --list"
@@ -257,7 +282,7 @@ for client in $order; do
     rm -f "$body" "$log" "$log.code"
     started="$(date -u +%s)"
     rc=0
-    FETCHER_MAX_TIME="$timeout_s" FETCHER_CONNECT_TIMEOUT="$connect_s" FETCHER_MAX_BYTES="$max_bytes" client_run "$client" "$url" "$body" "$log" || rc=$?
+    FETCHER_MAX_TIME="$timeout_s" FETCHER_CONNECT_TIMEOUT="$connect_s" FETCHER_MAX_BYTES="$max_bytes" client_run "$client" "$url" "$body" "$log" "$referer" || rc=$?
     took=$(( $(date -u +%s) - started ))
     class=0
     status_class "$log" "$rc" || class=$?

@@ -3,7 +3,9 @@
 # Retrieve a URL with curl-impersonate (BoringSSL): one HTTP profile of a real
 # browser, so the request carries that browser's TLS and HTTP/2 profile.
 #
-#   fetchers/curl-impersonate/fetch.sh URL OUT
+#   fetchers/curl-impersonate/fetch.sh URL OUT [HEADER...]
+#
+# HEADER is one "Name: Value" per extra request header.
 #
 # Environment:
 #   CURL_IMPERSONATE_DIR  the directory of the profile wrappers (default: the
@@ -39,9 +41,14 @@ if [ "${1:-}" = "--available" ]; then
   pick_bin > /dev/null 2>&1
   exit $?
 fi
-[ "$#" -ge 2 ] || { echo "usage: fetch.sh URL OUT" >&2; exit 2; }
+[ "$#" -ge 2 ] || { echo "usage: fetch.sh URL OUT [HEADER...]" >&2; exit 2; }
 url="$1"
 out="$2"
+shift 2
+hdr=()
+for h in "$@"; do
+  hdr+=(--header "$h")
+done
 bin="$(pick_bin)" || { echo "curl-impersonate is not installed in $dir" >&2; exit 1; }
 [ -x "$dir/$bin" ] || { echo "no $dir/$bin" >&2; exit 1; }
 
@@ -50,7 +57,7 @@ rc=0
 code="$("$dir/$bin" -q --silent --show-error --location --max-redirs 5 \
   --proto '=https,http' --proto-redir '=https,http' \
   --connect-timeout "${FETCHER_CONNECT_TIMEOUT:-20}" \
-  --max-time "${FETCHER_MAX_TIME:-300}" \
+  --max-time "${FETCHER_MAX_TIME:-300}" "${hdr[@]}" \
   --output "$out" --write-out '%{http_code}' "$url")" || rc=$?
 if [ "$rc" -ne 0 ]; then
   rm -f "$out"

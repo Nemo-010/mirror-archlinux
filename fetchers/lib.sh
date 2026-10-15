@@ -14,6 +14,11 @@
 FETCHER_HOME="${FETCHER_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 FETCHER_CACHE="${FETCHER_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/mirror-archlinux/fetcher}"
 
+# Extra request headers ("Name: Value"), set by fetcher.sh --header. curl and
+# curl-impersonate get them as --header; the browser clients read them from
+# FETCHER_HEADERS, one per line.
+HEADERS=()
+
 # The clients, in the order auto mode tries them: the cheapest first, so a
 # host that answers curl costs one curl call, and a host that answers only a
 # full Chromium pays for it. A host with a known answer starts at the client
@@ -162,15 +167,23 @@ client_known() {
   esac
 }
 
-# client_run NAME URL OUT LOG -> the client's own status. The body lands in
-# OUT; the client's own output lands in LOG. Every client is wrapped in a hard
-# stop of FETCHER_MAX_TIME + 5 s, so a browser that hangs ends within the same
-# deadline curl has.
+# client_run NAME URL OUT LOG [REFERER] -> the client's own status. The body
+# lands in OUT; the client's own output lands in LOG. Every client is wrapped
+# in a hard stop of FETCHER_MAX_TIME + 5 s, so a browser that hangs ends within
+# the same deadline curl has. The headers of HEADERS and REFERER, if given,
+# reach the client.
 client_run() {
-  local name="$1" url="$2" out="$3" log="$4" secs="${FETCHER_MAX_TIME:-300}" dead=() cap=()
+  local name="$1" url="$2" out="$3" log="$4" referer="${5:-}" secs="${FETCHER_MAX_TIME:-300}" dead=() cap=() hdrs=() h
   dead=(timeout -k 5 "$((secs + 5))")
   if [ "${FETCHER_MAX_BYTES:-0}" -gt 0 ]; then
     cap=(--max-filesize "$FETCHER_MAX_BYTES")
+  fi
+  for h in "${HEADERS[@]}"; do
+    [ -n "$h" ] || continue
+    hdrs+=(--header "$h")
+  done
+  if [ -n "$referer" ]; then
+    hdrs+=(--referer "$referer")
   fi
   case "$name" in
     curl)
@@ -178,18 +191,19 @@ client_run() {
         --proto '=https,http' --proto-redir '=https,http' \
         --connect-timeout "${FETCHER_CONNECT_TIMEOUT:-20}" \
         --speed-limit 1024 --speed-time 60 \
-        --max-time "$secs" "${cap[@]}" \
+        --max-time "$secs" "${cap[@]}" "${hdrs[@]}" \
         --output "$out" --write-out '%{http_code}' "$url" > "$log.code" 2> "$log"
       ;;
     curl-impersonate)
-      FETCHER_MAX_TIME="$secs" "${dead[@]}" "$FETCHER_HOME/curl-impersonate/fetch.sh" "$url" "$out" > "$log" 2>&1
+      FETCHER_MAX_TIME="$secs" "${dead[@]}" "$FETCHER_HOME/curl-impersonate/fetch.sh" \
+        "$url" "$out" "${HEADERS[@]}" > "$log" 2>&1
       ;;
     chromium | cloak-browser)
-      FETCHER_MAX_TIME="$secs" "${dead[@]}" node "$FETCHER_HOME/$name/fetch.mjs" "$url" "$out" > "$log" 2>&1
+      FETCHER_MAX_TIME="$secs" "${dead[@]}" node "$FETCHER_HOME/$name/fetch.mjs" "$url" "$out" "$referer" > "$log" 2>&1
       ;;
     playwright)
       FETCHER_MAX_TIME="$secs" "${dead[@]}" "$FETCHER_HOME/playwright/venv/bin/python" \
-        "$FETCHER_HOME/playwright/fetch.py" "$url" "$out" > "$log" 2>&1
+        "$FETCHER_HOME/playwright/fetch.py" "$url" "$out" "$referer" > "$log" 2>&1
       ;;
     *)
       echo "unknown client $name" > "$log"

@@ -24,6 +24,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 . "$HERE/lib.sh"
 
+command -v jq > /dev/null 2>&1 || fetcher_die "jq is required"
+command -v curl > /dev/null 2>&1 || fetcher_die "curl is required"
+
 mode="tsv"
 ttl="${DRIFT_TTL:-86400}"
 force=0
@@ -60,6 +63,11 @@ invisible-playwright	feder-cr/invisible_playwright	release
 playwright	playwright	npm
 EOF
 }
+
+if [ -n "$only" ]; then
+  known="$(drift_sources | awk -F '\t' -v k="$only" '$1 == k { print $1 }')"
+  [ -n "$known" ] || fetcher_die "unknown key $only" "reproduce: fetchers/drift.sh --json"
+fi
 
 cache_file="$FETCHER_CACHE/drift.json"
 mkdir -p "$FETCHER_CACHE"
@@ -109,7 +117,9 @@ fetch_npm() {
 }
 
 values="{}"
-if [ "$fresh" -eq 1 ]; then
+if [ -s "$cache_file" ]; then
+  # The cached values are always loaded, so a stale cache whose lookup fails
+  # keeps its value instead of moving backwards.
   values="$(jq -c '.values // {}' "$cache_file")"
 fi
 
@@ -137,7 +147,14 @@ while IFS=$'\t' read -r key repo kind; do
 done < <(drift_sources)
 
 if [ "$fresh" -eq 0 ]; then
-  jq -n --argjson v "$values" --argjson f "$now" '{fetched: $f, values: $v}' > "$cache_file"
+  # Written aside, then moved, so a caller that reads the cache while this one
+  # writes never reads a half-written file.
+  tmp="$cache_file.$$"
+  if jq -n --argjson v "$values" --argjson f "$now" '{fetched: $f, values: $v}' > "$tmp"; then
+    mv -f "$tmp" "$cache_file"
+  else
+    rm -f "$tmp"
+  fi
 fi
 
 case "$mode" in

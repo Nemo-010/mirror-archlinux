@@ -23,6 +23,13 @@ const origin = new URL(referer || url).origin;
 const waitS = Number(process.env.CHROME_WAIT || 20);
 const maxMs = Math.max(1000, Number(process.env.FETCHER_MAX_TIME || 300) * 1000);
 
+// Extra request headers, one "Name: Value" per line.
+const extra = {};
+for (const line of (process.env.FETCHER_HEADERS || "").split("\n")) {
+  const i = line.indexOf(":");
+  if (i > 0) extra[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+}
+
 const browser = await launch({
   headless: process.env.CLOAK_HEADLESS !== "0",
 });
@@ -49,11 +56,11 @@ try {
     console.error(`cloak-browser: origin visit: ${e.message}`);
   }
 
-  const r = await page.evaluate(async ({ u, ms }) => {
+  const r = await page.evaluate(async ({ u, ms, hdrs }) => {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), ms);
     try {
-      const resp = await fetch(u, { credentials: "include", cache: "no-store", signal: ac.signal });
+      const resp = await fetch(u, { credentials: "include", cache: "no-store", signal: ac.signal, headers: hdrs });
       if (resp.status !== 200) return { status: resp.status };
       const buf = new Uint8Array(await resp.arrayBuffer());
       let s = "";
@@ -64,7 +71,7 @@ try {
     } finally {
       clearTimeout(t);
     }
-  }, { u: url, ms: maxMs });
+  }, { u: url, ms: maxMs, hdrs: extra });
 
   if (r.status === 404 || r.status === 410) {
     console.error(`cloak-browser: status ${r.status}`);

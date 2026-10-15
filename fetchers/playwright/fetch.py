@@ -14,11 +14,11 @@ from urllib.parse import urlparse
 
 from invisible_playwright import InvisiblePlaywright
 
-FETCH = """async ({u, ms}) => {
+FETCH = """async ({u, ms, hdrs}) => {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), ms);
   try {
-    const resp = await fetch(u, { credentials: "include", cache: "no-store", signal: ac.signal });
+    const resp = await fetch(u, { credentials: "include", cache: "no-store", signal: ac.signal, headers: hdrs });
     if (resp.status !== 200) return { status: resp.status };
     const buf = new Uint8Array(await resp.arrayBuffer());
     let s = "";
@@ -39,13 +39,18 @@ def main() -> int:
     url, out = sys.argv[1], sys.argv[2]
     origin = "{u.scheme}://{u.netloc}".format(u=urlparse(url))
     max_ms = max(1000, int(os.environ.get("FETCHER_MAX_TIME", "300")) * 1000)
+    extra = {}
+    for line in os.environ.get("FETCHER_HEADERS", "").split("\n"):
+        if ":" in line:
+            name, value = line.split(":", 1)
+            extra[name.strip()] = value.strip()
     with InvisiblePlaywright() as browser:
         page = browser.new_page()
         try:
             page.goto(origin, wait_until="domcontentloaded", timeout=min(60000, max_ms))
         except Exception as exc:  # noqa: BLE001 - the origin visit is a warm-up
             sys.stderr.write("playwright: origin visit: %s\n" % exc)
-        r = page.evaluate(FETCH, {"u": url, "ms": max_ms})
+        r = page.evaluate(FETCH, {"u": url, "ms": max_ms, "hdrs": extra})
     status = r.get("status")
     if status in (404, 410):
         sys.stderr.write("playwright: status %s\n" % status)

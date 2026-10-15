@@ -24,6 +24,10 @@ fi
 fetcher_log "installing playwright@$version"
 npm install --prefix "$HERE" --no-save --no-package-lock --no-audit --no-fund "playwright@$version" ||
   fetcher_die "npm could not install playwright@$version"
-"$HERE/node_modules/.bin/playwright" install chromium ||
+deps=()
+if [ "${PLAYWRIGHT_WITH_DEPS:-0}" = 1 ]; then
+  deps=(--with-deps)
+fi
+"$HERE/node_modules/.bin/playwright" install "${deps[@]}" chromium ||
   fetcher_die "the chromium build could not be installed"
 "$HERE/available"

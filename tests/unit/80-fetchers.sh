@@ -201,6 +201,25 @@ rc=0
 out="$(FETCHER_CACHE="$work/drift-cache" "$REPO_ROOT/fetchers/drift.sh" --key curl-impersonate 2> /dev/null)" || rc=$?
 check "drift serves the value from its cache" "0 curl-impersonate	v9.9.9" "$rc $(printf '%s' "$out" | tr -d '\n')" \
   "fetchers/drift.sh --key curl-impersonate"
+rc=0
+out="$(FETCHER_CACHE="$work/drift-cache" "$REPO_ROOT/fetchers/drift.sh" --json --key curl-impersonate 2> /dev/null)" || rc=$?
+check "drift --json prints every value" "0 v9.9.9" "$rc $(printf '%s' "$out" | jq -r '.["curl-impersonate"]')" \
+  "fetchers/drift.sh --json --key curl-impersonate"
+rc=0
+out="$(FETCHER_CACHE="$work/drift-cache" "$REPO_ROOT/fetchers/drift.sh" --env --key curl-impersonate 2> /dev/null)" || rc=$?
+check "drift --env prints an export line" "0 1" \
+  "$rc $(printf '%s\n' "$out" | awk '/^export DRIFT_CURL_IMPERSONATE=/ { n++ } END { print n + 0 }')" \
+  "fetchers/drift.sh --env --key curl-impersonate"
+rc=0
+FETCHER_CACHE="$work/drift-cache" "$REPO_ROOT/fetchers/drift.sh" --key nope > /dev/null 2>&1 || rc=$?
+check "an unknown drift key is refused" 1 "$rc" "fetchers/drift.sh --key nope"
+behaviour 200 release.json
+rule api.github.com 500 denied.html
+rc=0
+out="$(FETCHER_CACHE="$work/drift-cache" "$REPO_ROOT/fetchers/drift.sh" --ttl 0 --key curl-impersonate 2> /dev/null)" || rc=$?
+check "a lookup that fails keeps the cached value" "0 curl-impersonate v9.9.9" \
+  "$rc $(printf '%s' "$out" | tr '\t' ' ' | tr -d '\n')" \
+  "fetchers/drift.sh --ttl 0 --key curl-impersonate, against a lookup that fails"
 
 #---------------------------------------------------------------------------#
 # The usage, the order, and a client name that no build defines
@@ -261,6 +280,22 @@ check "--max-bytes that is not a number is refused" 1 "$rc" \
   "fetchers/fetcher.sh --max-bytes nope URL OUT"
 r="$(bash -c '. "$1"; printf "%s %s %s %s" "$(retry_delay 1)" "$(retry_delay 2)" "$(retry_delay 3)" "$(retry_delay 9)"' _ "$REPO_ROOT/fetchers/lib.sh")"
 check "retry_delay grows 2, 4, 8 and stops at 30" "2 4 8 30" "$r" "bash -c '. fetchers/lib.sh; retry_delay 1 2 3 9'"
+
+#---------------------------------------------------------------------------#
+# An extra header and a referer reach the client
+#---------------------------------------------------------------------------#
+behaviour 200 good.db
+: > "$work/fakecurl/headers"
+: > "$work/fakecurl/referers"
+rc=0
+run --client curl --no-cache --expect any --header 'X-Test: yes' --referer https://ref.test/ https://hdr.test/a "$work/hdr.out" > /dev/null 2>&1 || rc=$?
+check "an extra header reaches curl" 1 \
+  "$(awk '/^X-Test: yes$/ { n++ } END { print n + 0 }' "$work/fakecurl/headers")" "cat \$FAKE_CURL_DIR/headers"
+check "the referer reaches curl" 1 \
+  "$(awk '/^https:\/\/ref.test\/$/ { n++ } END { print n + 0 }' "$work/fakecurl/referers")" "cat \$FAKE_CURL_DIR/referers"
+rc=0
+run --no-cache --header 'no colon' --expect any https://hdr.test/a "$work/hdr2.out" > /dev/null 2>&1 || rc=$?
+check "a header with no colon is refused" 1 "$rc" "fetchers/fetcher.sh --header 'no colon' URL OUT"
 
 #---------------------------------------------------------------------------#
 # A client probe is cached, and --no-cache asks again
@@ -325,14 +360,14 @@ cat > "$work/bin/node" << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'node %s\n' "$1" >> "${FAKE_DISPATCH:?}"
-out="${@: -1}"
+out="$3"
 cp "${FAKE_CI_BODY:?}" "$out"
 EOF
 cat > "$work/fetchers/playwright/venv/bin/python" << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'python %s\n' "$1" >> "${FAKE_DISPATCH:?}"
-out="${@: -1}"
+out="$3"
 cp "${FAKE_CI_BODY:?}" "$out"
 EOF
 chmod 0755 "$work/bin/node" "$work/fetchers/playwright/venv/bin/python"
@@ -360,5 +395,16 @@ sc="$("$work/fetchers/self-check.sh" --strict https://selfcheck.test/base.db 2>&
 check "self-check reads the URL through every available client" "0 6" \
   "$rc $(printf '%s\n' "$sc" | awk '/: read it$/ { n++ } END { print n + 0 }')" \
   "fetchers/self-check.sh --strict https://selfcheck.test/base.db, with five clients that answer"
+
+rc=0
+"$work/fetchers/ci.sh" --help > /dev/null 2>&1 || rc=$?
+check "ci.sh --help exits 0" 0 "$rc" "fetchers/ci.sh --help"
+rc=0
+"$work/fetchers/ci.sh" bogus > /dev/null 2>&1 || rc=$?
+check "ci.sh refuses an unknown client" 1 "$rc" "fetchers/ci.sh bogus"
+rc=0
+FETCHER_SELFCHECK_URL=https://selfcheck.test/base.db "$work/fetchers/ci.sh" curl > /dev/null 2>&1 || rc=$?
+check "ci.sh checks an already-installed client" 0 "$rc" \
+  "FETCHER_SELFCHECK_URL=https://selfcheck.test/base.db fetchers/ci.sh curl"
 
 summary

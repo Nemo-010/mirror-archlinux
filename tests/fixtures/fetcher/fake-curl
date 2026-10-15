@@ -24,7 +24,15 @@ while [ "$#" -gt 0 ]; do
       want_code=1
       shift 2
       ;;
-    --max-redirs | --proto | --proto-redir | --connect-timeout | --speed-limit | --speed-time | --max-time | --max-filesize | --user-agent | --config | --header)
+    --header)
+      printf '%s\n' "$2" >> "$dir/headers"
+      shift 2
+      ;;
+    --referer)
+      printf '%s\n' "$2" >> "$dir/referers"
+      shift 2
+      ;;
+    --max-redirs | --proto | --proto-redir | --connect-timeout | --speed-limit | --speed-time | --max-time | --max-filesize | --user-agent | --config)
       # The caller passes these; the tests do not read them.
       shift 2
       ;;
