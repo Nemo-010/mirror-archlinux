@@ -116,7 +116,7 @@ Status runs are not an hour apart. The cron runs `status.yml` at minute 47 of ea
 
 - **A private package.** GitHub may create a package private, and has no API to change that. Open the settings link in `visibility-<target>`, and make the package public.
 - **A replaced file.** Arch does not publish a filename again with new bytes. So `replaced-<target>` means something unusual upstream or on the registry. The issue names the file and both digests. Wait for upstream to publish a new filename, or accept the new bytes under a new tag.
-- **Renovate.** Merge the keyring image updates and the major updates.
+- **Renovate.** Merge the major updates, and the keyring image updates that fail CI job `keyrings`. For new keys, check the change, run `scripts/keyring-files OUT`, and write its lines into `targets/keyrings.sha256`.
 - **Pages.** Enable Pages once (below).
 - **The Worker.** Deploy a change to `worker/` by hand, after `worker.yml` passes (`docs/worker.md`).
 - **A disabled workflow.** Enable a workflow that a person disabled, when that decision no longer holds.
@@ -152,7 +152,7 @@ The plan job reads every target's databases from upstream, one target after anot
 - Digest, pin, pinDigest, patch and minor updates of actions and images merge on their own, as a squash, when every check is green.
 - `platformAutomerge` is `false`. `main` has no required checks, so GitHub's own auto-merge would merge a pull request with red checks. Renovate reads the checks itself.
 - ⚠ A major update waits for a person.
-- ⚠ The keyring images (`ghcr.io/pkgforge-dev/archlinux`) wait for a person. They are the trust root of the aarch64, armv7h, loong64 and riscv64 targets, and no CI job runs them.
+- ⚠ The keyring images (`ghcr.io/pkgforge-dev/archlinux`) are the trust root of the aarch64, armv7h, loong64 and riscv64 targets. They merge on their own only when CI job `keyrings` passes: the keyring files that verify takes from them equal `targets/keyrings.sha256`. Other keys fail the job, and a person reviews them.
 - The 15 `verify_image` lines and the Arch image of the tests move in one pull request. So CI runs pacman in the image the targets will verify with, before it merges.
 - The node image of `worker.yml` and `ci.yml` moves in one pull request.
 - `ignorePaths` is `["**/node_modules/**"]`. It replaces the preset's list, which ignores `**/tests/**`, so the test images are updated too.

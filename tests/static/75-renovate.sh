@@ -48,19 +48,28 @@ majors="$(jq -r '.packageRules // [] | to_entries[] | select(.value.automerge ==
 check "no rule in $CONFIG automerges a major update" "" "$majors" "jq '.packageRules' $CONFIG"
 check "$CONFIG sets platformAutomerge to false" false "$(jq -r '.platformAutomerge' "$CONFIG")" "jq .platformAutomerge $CONFIG"
 
-# The keyring images are the trust root of the non-x86_64 targets, and no CI
-# job runs them. Renovate applies packageRules in order and a later rule
-# wins, so a rule that names them with automerge false comes after every
-# rule with automerge true.
+# The keyring images are the trust root of the non-x86_64 targets. They may
+# merge on their own only behind ci.yml job keyrings, which fails when their
+# keyring files differ from targets/keyrings.sha256. Renovate applies
+# packageRules in order and a later rule wins.
 keyring="$(jq -r '
   (.packageRules // []) | to_entries as $r
   | ([$r[] | select(.value.automerge == true) | .key] | max // -1) as $on
   | ([$r[] | select((.value.matchDepNames // []) | index("ghcr.io/pkgforge-dev/archlinux")) | select(.value.automerge == false) | .key] | max // -1) as $off
-  | if $off < 0 then "no rule names them with automerge false"
-    elif $off < $on then "packageRules[\($on)] comes after packageRules[\($off)] and turns automerge on"
-    else "a person merges them" end' "$CONFIG")"
-check "the keyring images (ghcr.io/pkgforge-dev/archlinux) never merge on their own" "a person merges them" "$keyring" \
-  "jq '.packageRules' $CONFIG"
+  | if $on >= 0 and $off < $on then "automerge" else "a person merges them" end' "$CONFIG")"
+if [ "$keyring" = automerge ]; then
+  if grep -q 'scripts/keyring-files' "$REPO_ROOT/.github/workflows/ci.yml" &&
+    grep -q 'targets/keyrings.sha256' "$REPO_ROOT/.github/workflows/ci.yml" &&
+    [ -s "$REPO_ROOT/targets/keyrings.sha256" ]; then
+    ok "the keyring images merge on their own only behind ci.yml job keyrings"
+  else
+    fail "the keyring images merge on their own only behind ci.yml job keyrings" \
+      "renovate.json lets them merge, and ci.yml does not compare their keyring files with targets/keyrings.sha256" \
+      "reproduce: grep -n keyring .github/workflows/ci.yml; ls targets/keyrings.sha256"
+  fi
+else
+  ok "the keyring images wait for a person"
+fi
 ignore="$(jq -r '.ignorePaths // ["(unset)"] | .[]' "$CONFIG")"
 case "$ignore" in
   *'(unset)'* | *test*)

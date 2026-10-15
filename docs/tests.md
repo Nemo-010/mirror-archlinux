@@ -127,6 +127,7 @@ The image is the targets' verify image, so this command follows each Renovate up
 | `integration` | one job per file of `tests/run.sh --list integration` |
 | `worker` | `tests/run.sh worker` in the pinned `node:24-alpine` |
 | `debloat` | `scripts/debloat-runner` on a real runner; a warning when it frees less than 1 GiB |
+| `keyrings` | `scripts/keyring-files` against `targets/keyrings.sha256`: the keys that verify trusts from each `keyring_image` are the reviewed ones |
 
 ⛔ No CI job installs a package with a package manager. `scripts/install-test-tools` downloads pinned static binaries and checks each sha256. Its bash comes from Ubuntu's `bash-static` package, checked by sha256 and unpacked. Each unit leg checks that it runs the shell and the awk it is named for.
 
@@ -327,7 +328,8 @@ The tree itself is never changed. An integration fault runs with its own registr
 | static/75-renovate | `major` added to the automerge rule | not ok: `no rule in .github/renovate.json automerges a major update` |
 | static/75-renovate | `platformAutomerge: true` | not ok: `.github/renovate.json sets platformAutomerge to false` |
 | static/75-renovate | `ignorePaths` removed | not ok: `.github/renovate.json sets ignorePaths, and no entry is a tests directory` |
-| static/75-renovate | the keyring images set to automerge | not ok: `the keyring images (ghcr.io/pkgforge-dev/archlinux) never merge on their own` |
+| static/75-renovate | the keyring images set to automerge, with no `keyrings` job in ci.yml | not ok: `the keyring images merge on their own only behind ci.yml job keyrings` |
+| ci.yml job `keyrings` | one sha256 in `targets/keyrings.sha256` changed | the job fails, prints the diff, and names the file to update |
 
 ## What the integration suite drives on every run
 

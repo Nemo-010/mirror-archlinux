@@ -228,3 +228,29 @@ jobs:
           if [ "$freed" -lt 1073741824 ]; then
             echo "::warning::debloat-runner freed $((freed / 1048576)) MiB, less than 1 GiB, on $ImageOS $ImageVersion. The runner image changed under it: compare its TARGETS with du -sh of each on this image."
           fi
+
+  # The trust root of every target outside x86_64: the keyring files verify
+  # takes from each keyring_image. They must equal targets/keyrings.sha256.
+  # So Renovate may merge a new keyring_image digest on its own while the
+  # keys stay the same, and a change of keys waits for a person.
+  keyrings:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The keyring files of the keyring images are the reviewed ones
+        env:
+          CONTAINER_RUNTIME: docker
+        run: |
+          scripts/keyring-files "$RUNNER_TEMP/keyrings.tsv"
+          grep -v '^#' targets/keyrings.sha256 > "$RUNNER_TEMP/reviewed.tsv"
+          if ! diff -u "$RUNNER_TEMP/reviewed.tsv" "$RUNNER_TEMP/keyrings.tsv" > "$RUNNER_TEMP/keyrings.diff"; then
+            cat "$RUNNER_TEMP/keyrings.diff"
+            echo "::error::the keyring files of a keyring_image changed: the keys verify trusts are not the reviewed ones. Review the change, then write the new lines into targets/keyrings.sha256 (scripts/keyring-files OUT prints them)."
+            exit 1
+          fi
+          echo "the keyring files of every keyring_image are the reviewed ones: $(wc -l < "$RUNNER_TEMP/keyrings.tsv") file(s)"

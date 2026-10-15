@@ -2,7 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
     "Pins stay pins: actions by commit hash with the version in a comment, images by digest under a '# tag: <tag>' marker. The repository requires SHA-pinned actions, and tests/static/50-workflow-policy.sh fails a change that turns one back into a tag.",
-    "Digest, pin, patch and minor updates of actions and images merge on their own, as a squash, when every check of the pull request is green. Renovate reads the checks itself: platformAutomerge is off, because main has no required checks and GitHub's own auto-merge would merge a red pull request. A major update and a keyring image wait for a person.",
+    "Digest, pin, patch and minor updates of actions and images merge on their own, as a squash, when every check of the pull request is green. Renovate reads the checks itself: platformAutomerge is off, because main has no required checks and GitHub's own auto-merge would merge a red pull request. A major update waits for a person, and so does a keyring image whose keys change (ci.yml job keyrings).",
     "The verify image of the targets and the Arch image of the tests move in one pull request. So CI runs pacman in the image that the targets will verify with, before that image merges.",
     "ignorePaths replaces the preset's list, which ignores **/tests/**: the test images are pins too.",
     "tests/static/75-renovate.sh fails an image pin that the regex manager below does not match, and an automerge rule for major updates."
@@ -34,11 +34,10 @@
       "groupName": "archlinux base image"
     },
     {
-      "description": "The keyring images of the targets (keyring_image): one pull request, which a person merges. Their keyrings are the trust root of the aarch64, armv7h, loong64 and riscv64 targets, and no CI job runs them.",
+      "description": "The keyring images of the targets (keyring_image): one pull request. Their keyring files are the trust root of the aarch64, armv7h, loong64 and riscv64 targets. ci.yml job keyrings compares them with targets/keyrings.sha256: the same keys merge on their own, other keys fail the check and wait for a person.",
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["ghcr.io/pkgforge-dev/archlinux"],
-      "groupName": "keyring images",
-      "automerge": false
+      "groupName": "keyring images"
     },
     {
       "description": "The node image of worker.yml and ci.yml: one pull request, so ci.yml and worker.yml test the Worker in one image.",

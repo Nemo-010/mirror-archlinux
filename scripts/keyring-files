@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+#
+# Print the keyring files that verify takes from each keyring_image: the
+# trust root of every target outside x86_64.
+#
+#   scripts/keyring-files OUT
+#
+# For each distinct keyring_image of the enabled targets, the files of its
+# /usr/share/pacman/keyrings that the verify image does not hold (verify
+# never puts one over a file of the verify image: scripts/verify-batch).
+# OUT gets one line per file, sorted: TAG<TAB>FILE<TAB>SHA256, with TAG the
+# image's tag (aarch64, armv7h, ...).
+#
+# ⭐ CI compares OUT with targets/keyrings.sha256. Equal: an image update that
+# Renovate proposes keeps the trust root, and it may merge on its own.
+# Different: a key was added, removed or changed, and a person reviews it,
+# then writes the new lines into targets/keyrings.sha256.
+#
+# create and cp run nothing from an image, so no emulation is needed.
+#
+# Environment: CONTAINER_RUNTIME (docker or podman; docker by default),
+# TARGETS_DIR (lib.sh).
+#
+# Exit status: 0 OUT written, 1 an image could not be read.
+set -euo pipefail
+SCRIPT_NAME=keyring-files
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+out="${1:-}"
+[ -n "$out" ] || die "usage: scripts/keyring-files OUT"
+RUNTIME="${CONTAINER_RUNTIME:-docker}"
+need "$RUNTIME" timeout sha256sum
+
+work="$(mktemp -d)"
+cid=""
+cleanup() {
+  if [ -n "$cid" ]; then
+    timeout 60 "$RUNTIME" rm "$cid" > /dev/null || log "could not remove container $cid"
+  fi
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+# files IMAGE PLATFORM DIR: the keyring files of IMAGE into DIR
+files() {
+  local rc=0
+  mkdir -p "$3"
+  timeout --kill-after=30 600 "$RUNTIME" pull --platform "$2" "$1" > "$work/pull.log" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || die "could not pull $1 for $2 (status $rc): $(tail -n 1 "$work/pull.log")" \
+    "reproduce: $RUNTIME pull --platform $2 $1"
+  cid="$(timeout 120 "$RUNTIME" create --platform "$2" "$1" true)" ||
+    die "could not create a container from $1" "reproduce: $RUNTIME create --platform $2 $1 true"
+  timeout 120 "$RUNTIME" cp "$cid:/usr/share/pacman/keyrings/." "$3/" > "$work/cp.log" 2>&1 || rc=$?
+  timeout 60 "$RUNTIME" rm "$cid" > /dev/null || rc=$?
+  cid=""
+  [ "$rc" -eq 0 ] || die "could not copy /usr/share/pacman/keyrings out of $1 (status $rc)" \
+    "reproduce: $RUNTIME create --platform $2 $1 true, then $RUNTIME cp ID:/usr/share/pacman/keyrings/. DIR"
+}
+
+: > "$work/images.tsv"
+verify_image="" verify_platform=""
+for conf in "$TARGETS_DIR"/*.conf; do
+  [ -e "$conf" ] || continue
+  target_enabled "$conf" || continue
+  target_check "$conf"
+  verify_image="$(target_get "$conf" verify_image)"
+  verify_platform="$(target_get "$conf" verify_platform)"
+  image="$(target_get "$conf" keyring_image)"
+  [ -n "$image" ] || continue
+  printf '%s\t%s\n' "$image" "$(target_get "$conf" keyring_platform)" >> "$work/images.tsv"
+done
+[ -n "$verify_image" ] || die "no enabled target in $TARGETS_DIR"
+
+files "$verify_image" "$verify_platform" "$work/verify"
+: > "$work/out.tsv"
+sort -u "$work/images.tsv" > "$work/images.sorted"
+while IFS=$'\t' read -r image platform; do
+  tag="${image%%@*}"
+  tag="${tag##*:}"
+  dir="$work/img-$tag"
+  files "$image" "$platform" "$dir"
+  for f in "$dir"/*; do
+    [ -f "$f" ] || continue
+    b="${f##*/}"
+    [ ! -e "$work/verify/$b" ] || continue
+    printf '%s\t%s\t%s\n' "$tag" "$b" "$(sha256sum "$f" | cut -d ' ' -f 1)" >> "$work/out.tsv"
+  done
+done < "$work/images.sorted"
+sort "$work/out.tsv" > "$out"
+log "$(awk 'END { print NR + 0 }' "$out") keyring file(s) from $(awk 'END { print NR + 0 }' "$work/images.sorted") keyring image(s)"

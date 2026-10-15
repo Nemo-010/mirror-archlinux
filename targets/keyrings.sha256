@@ -1,0 +1,13 @@
+# The keyring files verify takes from each keyring_image: the trust root of
+# every target outside x86_64. One line per file: TAG<TAB>FILE<TAB>SHA256.
+# CI (ci.yml job keyrings) compares this with scripts/keyring-files; a
+# change here is a change of trusted keys, and a person reviews it.
+aarch64	archlinuxarm-revoked	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+aarch64	archlinuxarm-trusted	f2a7250f2a2b77542f82f4219b2bae7895f27b3dcfdf350b497e2be306af776d
+aarch64	archlinuxarm.gpg	6ce771e853f04a38a5b533cb33e61f877b9b06b58b6db051eb8a15d737a2332f
+armv7h	archlinuxarm-revoked	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+armv7h	archlinuxarm-trusted	f2a7250f2a2b77542f82f4219b2bae7895f27b3dcfdf350b497e2be306af776d
+armv7h	archlinuxarm.gpg	6ce771e853f04a38a5b533cb33e61f877b9b06b58b6db051eb8a15d737a2332f
+loong64	archlinux-lcpu-revoked	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+loong64	archlinux-lcpu-trusted	3076b1e6c6457bebc3d565181c5339ca43c97d8f020ef11d472115afa167b554
+loong64	archlinux-lcpu.gpg	90be0b9dc78c49d01e0946081066027692955c5d2caa6a520bcd5a92b48345b2

@@ -183,7 +183,7 @@ pacman checks each package against the keyring of its distribution. A consumer n
 - pacman then checks each package's sha256 against the database, and each signature against the keyring.
 - Push access to this repository is the trust root of the registry: any workflow on any branch can ask for `packages: write`. Every workflow starts from `permissions: {}`. Only `main` promotes. Actions are pinned by commit.
 - The Worker and its Cloudflare account join the trust root for the consumers of ways 1 and 3. Whoever can change the Worker can change the database a consumer gets.
-- Renovate pushes its own branches, so it holds the same trust. Its small updates merge when CI is green. ⚠ The keyring images of the targets and every major update wait for a person.
+- Renovate pushes its own branches, so it holds the same trust. Its small updates merge when CI is green. ⚠ A major update waits for a person. So does a keyring image update that changes keys: CI job `keyrings` compares the keyring files with `targets/keyrings.sha256`.
 
 ## Add a target
 
@@ -246,7 +246,7 @@ These need a person:
 
 - Make a private package public, with the link in its `visibility-` issue.
 - Decide each `replaced-` issue: wait for a new upstream filename, or accept the new bytes.
-- Review and merge the keyring image updates and the major updates from Renovate.
+- Review and merge the major updates from Renovate, and the keyring image updates that fail CI job `keyrings` (new keys): check the change, then run `scripts/keyring-files OUT` and write its lines into `targets/keyrings.sha256`.
 - Enable Pages once: `gh api -X POST repos/pkgforge-dev/mirror-archlinux/pages -f build_type=workflow`.
 - Deploy a change to `worker/` by hand, after `worker.yml` passes: `cd worker && npx wrangler@4.150.0 deploy` (`docs/worker.md`).
 - Start a workflow by hand when every schedule stops at once. GitHub stops the schedules of a repository after 60 days with no activity.
