@@ -102,6 +102,9 @@ check "the client that read the host is remembered" curl "$(cat "$work/cache/hos
   "cat \$FETCHER_CACHE/hosts/fast.test"
 check "curl read the host with one call" 1 "$(awk 'END { print NR + 0 }' "$work/fakecurl/calls")" \
   "cat \$FAKE_CURL_DIR/calls"
+check "the summary names the host, the client and the outcome" 1 \
+  "$(awk -F '\t' '$1 == "fast.test" && $2 == "curl" && $3 == "ok" { n++ } END { print n + 0 }' "$work/summary.tsv")" \
+  "cat \$FETCHER_SUMMARY"
 check "no curl-impersonate call was made" 0 "$(awk 'END { print NR + 0 }' "$work/ci.calls")" \
   "cat \$FAKE_CI_CALLS"
 

@@ -17,6 +17,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../lib.sh"
 
 need_net() { command -v curl > /dev/null || fetcher_die "curl is required"; }
+command -v jq > /dev/null || fetcher_die "jq is required"
 
 arch="$(uname -m)"
 case "$arch" in
