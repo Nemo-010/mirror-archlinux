@@ -1,6 +1,6 @@
 // playwright can be imported and its full Chrome-for-Testing build is here.
-// The headless shell is not enough: it reports HeadlessChrome, and an origin
-// that checks the client hints answers it 403.
+// The headless shell sends the HeadlessChrome user agent, and an origin that
+// reads the client hints answers that with 403.
 import fs from "node:fs";
 
 let chromium;

@@ -31,7 +31,8 @@
 #   --connect SEC   connect deadline (default 20)
 #   --no-cache      do not read or write the per-host preference
 #   --list          print the available clients, one per line, and exit
-#   --explain       print the client order and each client's availability, and exit
+#   --explain       print the URL, host, cached preference, order and each
+#                   client's availability, and exit
 #   --help          this text, and exit
 #   --quiet         no per-attempt line on stderr
 #

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Retrieve a URL with curl-impersonate (BoringSSL): one HTTP profile of a real
-# browser, so the request carries that browser's TLS and HTTP/2 profile.
+# Retrieve a URL with curl-impersonate (BoringSSL): the request carries one
+# browser's TLS and HTTP/2 profile.
 #
 #   fetchers/curl-impersonate/fetch.sh URL OUT [HEADER...]
 #

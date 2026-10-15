@@ -45,8 +45,8 @@ Source: pacman v7.1.0 (commit 5683f847), read from source. Also pacman 7.1.0.r9.
 | fact | date | source |
 | --- | --- | --- |
 | `Authorization: Bearer QQ==` gives 200 on a public manifest and blob | 2026-10-13 | curl against ghcr.io |
-| no Authorization header gives 401 with a Bearer challenge | 2026-10-14 | curl against ghcr.io |
-| an unknown bearer gives 403 with no challenge | 2026-10-13 | curl against ghcr.io |
+| no Authorization header gives 401 with a `WWW-Authenticate` header | 2026-10-14 | curl against ghcr.io |
+| an unknown bearer gives 403 with no `WWW-Authenticate` header | 2026-10-13 | curl against ghcr.io |
 | `Bearer QQ==` for a repository that does not exist gives 404 `MANIFEST_UNKNOWN` | 2026-10-14 | curl against ghcr.io |
 | a blob GET gives 307 to a signed URL on `pkg-containers.githubusercontent.com`; that URL needs no Authorization | 2026-10-13 | curl against ghcr.io |
 | a Range request on a blob gives 206; a resumed download was byte-identical | 2026-10-14 | curl against ghcr.io, a 199 MiB blob |
@@ -190,7 +190,7 @@ live host from a residential network, 2026-10-15.
 | powerpc base: 3551 files, 12.9 GiB, 157 `%PGPSIG%` | 2026-10-15 | the guide's measurement |
 | base-any: 2200 files, 14.0 GiB, 262 `%PGPSIG%`, largest `texlive-doc-2025.2-2` 3.35 GB | 2026-10-15 | the guide's measurement |
 | `fetchers/fetcher.sh` reads `base.db` of the three arches (powerpc64le 724416 B, powerpc64 684273 B, powerpc 741171 B) and of `base-any` (504891 B) with one call each, and each passes the `db` check; each `.db.sig` (119 B) passes the `sig` check | 2026-10-15 | `fetchers/fetcher.sh` from a residential network |
-| the same URLs answer 403 with a Cloudflare interstitial from GitHub runner addresses | 2026-08-28 and 2026-09-18 | the guide's measurement, and Nemo-010/archpower-403-poc |
+| the same URLs answer 403 with an interstitial response from GitHub runner addresses | 2026-08-28 and 2026-09-18 | the guide's measurement, and Nemo-010/archpower-403-poc |
 | the keyring package is `archpower-keyring`, in `base-any` | 2026-10-15 | the guide's notes |
 | `ghcr.io/pkgforge-dev/archlinux:ppc64le`, `:ppc64` and `:ppc` exist; newest dated tags 2026-09-05 | 2026-10-15 | GHCR |
 

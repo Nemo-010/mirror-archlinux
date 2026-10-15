@@ -1845,10 +1845,11 @@ work_flat="$work/body.flat"
 #
 # A public GHCR repository answers a dummy bearer token, which saves the token
 # round trip on every file. A registry that refuses it answers 401, or 403 with
-# no challenge (GHCR, measured), so the same request is then made with no
-# Authorization at all to read the Bearer challenge, and the anonymous token it
-# names is fetched once. Manifest and token requests follow no redirect: GHCR
-# answers a reference it cannot parse with 303 to an HTML page.
+# no WWW-Authenticate header (GHCR, measured), so the same request is then made
+# with no Authorization at all to read the WWW-Authenticate header, and the
+# anonymous token it names is fetched once. Manifest and token requests follow
+# no redirect: GHCR answers a reference it cannot parse with 303 to an HTML
+# page.
 #---------------------------------------------------------------------------#
 
 # get URL FILE: the body into FILE, the HTTP status into $code (000 when
@@ -1880,9 +1881,9 @@ get() {
   debug "GET $1 -> $code (curl $get_rc)"
 }
 
-# The anonymous pull token named by the Bearer challenge in $work_hdr. The
-# scope asked for is always this repository's pull scope.
-challenge() {
+# The anonymous pull token named by the WWW-Authenticate header in $work_hdr.
+# The scope asked for is always this repository's pull scope.
+bearer_token() {
   _www=$(tr -d '\r' < "$work_hdr" | sed -n 's/^[Ww][Ww][Ww]-[Aa][Uu][Tt][Hh][Ee][Nn][Tt][Ii][Cc][Aa][Tt][Ee]: *[Bb]earer //p' | sed -n '$p')
   [ -n "$_www" ] || return 1
   _realm=$(printf '%s\n' "$_www" | sed -n 's/.*realm="\([^"]*\)".*/\1/p')
@@ -1916,13 +1917,13 @@ fetch_manifest() {
   get "$base/manifests/$1" "$work_json"
   case $code in
     401 | 403)
-      if [ "${tried_challenge:-0}" = 0 ]; then
-        tried_challenge=1
+      if [ "${tried_bearer:-0}" = 0 ]; then
+        tried_bearer=1
         if [ "$code" = 403 ]; then
           AUTH=''
           get "$base/manifests/$1" "$work_json"
         fi
-        if challenge; then
+        if bearer_token; then
           get "$base/manifests/$1" "$work_json"
         fi
       fi

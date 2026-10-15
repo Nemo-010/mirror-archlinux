@@ -27,7 +27,7 @@ absent (404 or 410), 1 no client read it or the body failed its check.
 | `--connect SEC` | connect deadline (default 20) |
 | `--no-cache` | do not read or write the per-host preference |
 | `--list` | print the clients that can run here, one per line |
-| `--explain [URL]` | print the order and each client's availability, then exit |
+| `--explain [URL]` | print the URL, host, cached preference, order and each client's availability, then exit |
 | `--help` | the usage, and exit |
 | `--quiet` | no per-attempt line on stderr |
 
@@ -114,19 +114,22 @@ non-zero if any available client did not read the URL; without it the
 manager's answer decides. `URL` defaults to the ArchPOWER powerpc64le database
 signature (119 bytes), and `--expect` follows the suffix.
 
-## Drift
+## On a build runner
 
 ```
 fetchers/ci.sh [--with-deps] [CLIENT...]
+```
 
-Installs the clients on a build runner and checks them: with no argument
-`curl-impersonate` and `chromium`, since those are what reads a host that
-answers curl with an interstitial. Every client asked for must be available
-after its install, and then `self-check.sh --strict` reads a small URL through
-each available client. `--with-deps` passes `--with-deps` to the browser
-installer for the system packages the browser needs. Set `FETCHER_SELFCHECK_URL`
-to check another URL. It exits 0 only when all of that happened.
+Installs the clients and then checks them: with no argument `curl-impersonate`
+and `chromium`. Every client asked for must be available after its install, and
+then `self-check.sh --strict` reads a small URL through each available client.
+`--with-deps` passes `--with-deps` to the browser installer for the system
+packages the browser needs. Set `FETCHER_SELFCHECK_URL` to check another URL.
+It exits 0 only when all of that happened.
 
+## Drift
+
+```
 fetchers/drift.sh [--json | --env] [--key NAME] [--ttl SECONDS] [--force]
 ```
 
@@ -171,7 +174,7 @@ fetchers/drift.sh --env                          # the tool versions, for a log
   ArchPOWER arches and of `base-any` with one call each, and passes the `db`
   check. The three `.db.sig` files pass the `sig` check.
 - 2026-08-28 and 2026-09-18, GitHub runner: the same URLs answer 403 with
-  a Cloudflare interstitial. The browser clients exist for that case.
+  an interstitial response. The browser clients exist for that case.
 - The unit tests (`tests/unit/80-fetchers.sh`) run the manager against a curl
   stand-in and a faked curl-impersonate, node and venv-python, so client
   selection, the fallback order, the structural, sha256 and size checks, the
@@ -182,5 +185,4 @@ fetchers/drift.sh --env                          # the tool versions, for a log
   from a residential network on 2026-10-15: the manager and `curl` read it; the
   other clients were not installed here. `fetchers/fetcher.sh` read `base.db`
   of all three arches and of `base-any`, and all four `.db.sig`, with one call
-  each. `fetchers/self-check.sh` re-ran green on 2026-10-15 after the headers,
-  referer, deadline and drift changes.
+  each.

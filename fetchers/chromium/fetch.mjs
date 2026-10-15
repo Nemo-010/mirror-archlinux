@@ -6,8 +6,8 @@
 //
 // The request is an in-page fetch(), so it uses Chromium's own network stack,
 // its client hints and its cookie jar. Playwright's APIRequestContext is a
-// separate Node-side client and does not produce the same request, which
-// matters when an origin tells the two apart.
+// separate Node-side client and does not send the same request, which matters
+// when an origin reads the client hints.
 //
 // Environment:
 //   CHROME_UA    user agent (default: derived from the running build)

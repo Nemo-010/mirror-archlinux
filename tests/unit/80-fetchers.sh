@@ -48,7 +48,7 @@ printf 'p\tp\t1-1\tany\t%s\t10\t1700000000\t\n' "$(printf 'p' | sha256sum | cut 
 printf 'this is not a tar archive\n' > "$work/fakecurl/notatar"
 printf '\x88\x01\x00' > "$work/fakecurl/good.sig"
 printf '\x00\x01\x00' > "$work/fakecurl/bad.sig"
-printf 'denied\n' > "$work/fakecurl/denied.html"
+printf 'not the file\n' > "$work/fakecurl/nonbody.html"
 jq -n '{tag_name: "v9.9.9"}' > "$work/fakecurl/release.json"
 good_db="$work/fakecurl/good.db"
 : > "$work/ci.calls"
@@ -113,20 +113,20 @@ check "no curl-impersonate call was made" 0 "$(awk 'END { print NR + 0 }' "$work
 # and the next call for the same host starts with it
 #---------------------------------------------------------------------------#
 behaviour 200 good.db
-rule challenged 403 denied.html
+rule interstitial 403 nonbody.html
 : > "$work/ci.calls"
 rc=0
-run --expect db https://challenged.test/base.db "$work/challenged.db" > /dev/null 2>&1 || rc=$?
+run --expect db https://interstitial.test/base.db "$work/interstitial.db" > /dev/null 2>&1 || rc=$?
 check "a 403 from curl falls back to curl-impersonate" "0 $(sha256sum "$good_db" | cut -d ' ' -f 1)" \
-  "$rc $(sha256sum "$work/challenged.db" | cut -d ' ' -f 1)" \
-  "fetchers/fetcher.sh --expect db https://challenged.test/base.db OUT"
+  "$rc $(sha256sum "$work/interstitial.db" | cut -d ' ' -f 1)" \
+  "fetchers/fetcher.sh --expect db https://interstitial.test/base.db OUT"
 check "the host is then remembered as curl-impersonate" curl-impersonate \
-  "$(cat "$work/cache/hosts/challenged.test" 2> /dev/null)" "cat \$FETCHER_CACHE/hosts/challenged.test"
+  "$(cat "$work/cache/hosts/interstitial.test" 2> /dev/null)" "cat \$FETCHER_CACHE/hosts/interstitial.test"
 check "curl-impersonate read the host with one call" 1 "$(awk 'END { print NR + 0 }' "$work/ci.calls")" \
   "cat \$FAKE_CI_CALLS"
 : > "$work/fakecurl/calls"
 rc=0
-run --expect db https://challenged.test/base.db "$work/challenged2.db" > /dev/null 2>&1 || rc=$?
+run --expect db https://interstitial.test/base.db "$work/interstitial2.db" > /dev/null 2>&1 || rc=$?
 check "the next call for that host starts at curl-impersonate" "0 0" \
   "$rc $(awk 'END { print NR + 0 }' "$work/fakecurl/calls")" \
   "the remembered client is tried first, so curl is not called again"
@@ -135,7 +135,7 @@ check "the next call for that host starts at curl-impersonate" "0 0" \
 # A 404 is the server's answer, not a client that needs changing
 #---------------------------------------------------------------------------#
 behaviour 200 good.db
-rule gone 404 denied.html
+rule gone 404 nonbody.html
 : > "$work/ci.calls"
 rc=0
 run --expect db https://host.test/gone/base.db "$work/gone.db" > /dev/null 2>&1 || rc=$?
@@ -217,7 +217,7 @@ rc=0
 FETCHER_CACHE="$work/drift-cache" "$REPO_ROOT/fetchers/drift.sh" --key nope > /dev/null 2>&1 || rc=$?
 check "an unknown drift key is refused" 1 "$rc" "fetchers/drift.sh --key nope"
 behaviour 200 release.json
-rule api.github.com 500 denied.html
+rule api.github.com 500 nonbody.html
 rc=0
 out="$(FETCHER_CACHE="$work/drift-cache" "$REPO_ROOT/fetchers/drift.sh" --ttl 0 --key curl-impersonate 2> /dev/null)" || rc=$?
 check "a lookup that fails keeps the cached value" "0 curl-impersonate v9.9.9" \
