@@ -51,6 +51,14 @@ body_magic() {
   od -An -tx1 -N4 "$1" | tr -d ' \n'
 }
 
+# body_is_html FILE -> 0 when FILE begins with an HTML document. No database,
+# signature or package file does, so an origin that answers a page has not
+# served the file. Used by body_validate and, in fetcher.sh, to tell a
+# definitive refusal from a body another attempt could repair.
+body_is_html() {
+  head -c 4096 -- "$1" | grep -qiE '<!doctype html|<html|</html>'
+}
+
 # body_validate FILE EXPECT -> 0 when FILE is what EXPECT names, else prints why
 #   any   not empty, and not an HTML document
 #   sig   one OpenPGP signature packet, under 64 KiB (lib.sh sig_packet)
@@ -61,15 +69,15 @@ body_validate() {
   [ -f "$file" ] || { echo "no file"; return 1; }
   size="$(wc -c < "$file" | tr -d ' ')"
   [ "$size" -gt 0 ] || { echo "empty"; return 1; }
+  # An origin that answers 200 with a page has not served the file that was
+  # asked for, whatever the caller expected. Refused before the check for the
+  # kind, so an interstitial is named as one.
+  if body_is_html "$file"; then
+    echo "an HTML document"
+    return 1
+  fi
   case "$expect" in
     any)
-      # An origin that answers 200 with a page has not served the file that
-      # was asked for. No database, signature or package file starts with an
-      # HTML document, so this is refused whatever the caller expected.
-      if head -c 4096 -- "$file" | grep -qiE '<!doctype html|<html|</html>'; then
-        echo "an HTML document"
-        return 1
-      fi
       return 0
       ;;
     sig)
@@ -171,7 +179,9 @@ client_known() {
 # lands in OUT; the client's own output lands in LOG. Every client is wrapped
 # in a hard stop of FETCHER_MAX_TIME + 5 s, so a browser that hangs ends within
 # the same deadline curl has. The headers of HEADERS and REFERER, if given,
-# reach the client.
+# reach the client. FETCHER_STATUS names a file the client writes the HTTP
+# status it saw to, so status_class can tell a definitive refusal from a
+# transient failure for every client, not only for curl.
 client_run() {
   local name="$1" url="$2" out="$3" log="$4" referer="${5:-}" secs="${FETCHER_MAX_TIME:-300}" dead=() cap=() hdrs=() h
   dead=(timeout -k 5 "$((secs + 5))")
@@ -195,14 +205,14 @@ client_run() {
         --output "$out" --write-out '%{http_code}' "$url" > "$log.code" 2> "$log"
       ;;
     curl-impersonate)
-      FETCHER_MAX_TIME="$secs" "${dead[@]}" "$FETCHER_HOME/curl-impersonate/fetch.sh" \
+      FETCHER_MAX_TIME="$secs" FETCHER_STATUS="$log.code" "${dead[@]}" "$FETCHER_HOME/curl-impersonate/fetch.sh" \
         "$url" "$out" "${HEADERS[@]}" > "$log" 2>&1
       ;;
     chromium | cloak-browser)
-      FETCHER_MAX_TIME="$secs" "${dead[@]}" node "$FETCHER_HOME/$name/fetch.mjs" "$url" "$out" "$referer" > "$log" 2>&1
+      FETCHER_MAX_TIME="$secs" FETCHER_STATUS="$log.code" "${dead[@]}" node "$FETCHER_HOME/$name/fetch.mjs" "$url" "$out" "$referer" > "$log" 2>&1
       ;;
     playwright)
-      FETCHER_MAX_TIME="$secs" "${dead[@]}" "$FETCHER_HOME/playwright/venv/bin/python" \
+      FETCHER_MAX_TIME="$secs" FETCHER_STATUS="$log.code" "${dead[@]}" "$FETCHER_HOME/playwright/venv/bin/python" \
         "$FETCHER_HOME/playwright/fetch.py" "$url" "$out" "$referer" > "$log" 2>&1
       ;;
     *)
@@ -212,10 +222,19 @@ client_run() {
   esac
 }
 
-# status_class LOG RC -> 0 read, 4 absent, 1 anything else. A client that
-# writes the HTTP status to LOG.code reports it; every other client maps its
-# own exit status, 4 meaning absent. An HTTP answer is authoritative: a 403
-# body is not a body, whatever the file holds.
+# status_class LOG RC -> 0 read, 4 absent, 2 refused, 1 anything else.
+#
+#   0  the body was read
+#   4  the server says the URL is absent (404 or 410); another client would
+#      hear the same, so the call ends
+#   2  a definitive refusal (any 4xx other than 408 and 429): the answer will
+#      not change for another attempt, so the next client is tried instead
+#   1  anything else (a 5xx, 408, 429, a failed connection, a deadline): an
+#      attempt of the same client could answer
+#
+# A client that writes the HTTP status to LOG.code reports it; every other
+# client maps its own exit status, 4 meaning absent. An HTTP answer is
+# authoritative: a 403 body is not a body, whatever the file holds.
 status_class() {
   local log="$1" rc="$2" code=""
   if [ -f "$log.code" ]; then
@@ -223,6 +242,8 @@ status_class() {
     case "$code" in
       200) return 0 ;;
       404 | 410) return 4 ;;
+      408 | 429) return 1 ;;
+      4??) return 2 ;;
       *) return 1 ;;
     esac
   fi

@@ -48,6 +48,13 @@ client is tried. A 404 or 410 ends the call with status 4, because another
 client would hear the same. `any` also refuses a body that is an HTML
 document: an origin that answers 200 with a page has not served the file.
 
+A definitive refusal is not retried. Any 4xx other than 408 and 429, and a 200
+that is an HTML document, is the same answer on the next attempt, so the
+client is left at once and the next client is tried. A 5xx, a 408, a 429, a
+failed connection or a deadline is not: those are retried, because another
+attempt could answer. The per-host preference is written only by a client that
+read a body, so a refusal never becomes the remembered client.
+
 A failed attempt is retried after 2, 4, 8, 16, then 30 s, each with up to
 0.9 s of jitter, so two callers that back off from one host do not retry in
 lockstep.
@@ -71,6 +78,10 @@ A name that no build defines is refused before any request. The per-host
 preference is moved into place, so two callers that read the same host at once
 do not half-write it.
 
+Every client reports the HTTP status it saw (curl by `--write-out`, the others
+by `FETCHER_STATUS`), so the definitive-refusal rule applies to all of them and
+not only to curl.
+
 The dispatch is one program per client, and no two clients share one:
 
 | client | program |
@@ -90,6 +101,10 @@ The dispatch is one program per client, and no two clients share one:
 | `chromium` | the playwright package and its full Chrome-for-Testing build; the request is an in-page `fetch()`, so it uses Chromium's own network stack and cookies | `fetchers/chromium/install.sh` |
 | `cloak-browser` | [CloakHQ/CloakBrowser](https://github.com/CloakHQ/CloakBrowser), a Chromium build with its client profile set in the engine | `fetchers/cloak-browser/install.sh` |
 | `playwright` | [feder-cr/invisible_playwright](https://github.com/feder-cr/invisible_playwright) | `fetchers/playwright/install.sh` |
+
+Each client writes the HTTP status it saw to `FETCHER_STATUS`, when the
+manager sets it, so the manager can tell a definitive refusal from a transient
+failure for every client. curl uses `--write-out` for the same thing.
 
 `fetchers/install.sh [--check] [CLIENT...]` runs the installers. With no
 argument it installs every client. `--check` installs nothing: it reports each
@@ -181,6 +196,9 @@ fetchers/drift.sh --env                          # the tool versions, for a log
   deadline, the dispatch of each client to its own program, the availability
   cache and the version resolver are covered without a network or a browser. A
   browser client itself is not started by the tests.
+- A definitive refusal is left at once: a 403 and a 200 that is a page each
+  cost one attempt and move to the next client, while a 503 and a 429 are
+  retried. The unit test drives each with the curl stand-in.
 - `fetchers/self-check.sh --strict` ran against the live ArchPOWER signature
   from a residential network on 2026-10-15: the manager and `curl` read it; the
   other clients were not installed here. `fetchers/fetcher.sh` read `base.db`

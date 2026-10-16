@@ -15,7 +15,9 @@
 # A client that reads the body but fails the structural check is not an answer:
 # the next client is tried. A client that the server answers 404 or 410 for
 # ends the call with status 4: the URL is absent, and another client would hear
-# the same.
+# the same. A definitive refusal (any 4xx other than 408 and 429, or a 200 that
+# is a page) is left at once, and the next client is tried; a 5xx, a 408, a 429
+# or a failed connection is retried, because another attempt could answer.
 #
 # OPTIONS
 #   --client LIST   clients to try, in order, comma or space separated; a
@@ -301,6 +303,14 @@ for client in $order; do
       absent=1
       break
     fi
+    if [ "$class" -eq 2 ]; then
+      # A definitive refusal: another attempt of this client would hear the
+      # same, so the next client is the answer. The per-host preference is not
+      # moved: this client did not read the host.
+      summary_line "$host" "$client" refused "$attempt" "$took" "$detail"
+      last_detail="$client: $detail"
+      break
+    fi
     if [ "$class" -ne 0 ]; then
       summary_line "$host" "$client" failed "$attempt" "$took" "$detail"
       last_detail="$client: $detail"
@@ -319,6 +329,11 @@ for client in $order; do
     why="$(body_validate "$body" "$expect" 2>&1)" || {
       summary_line "$host" "$client" bad-body "$attempt" "$took" "$why"
       last_detail="$client: $why"
+      # An interstitial is the same page on every attempt, so the next client
+      # is tried at once rather than paying for the retry backoff.
+      if body_is_html "$body"; then
+        break
+      fi
       if [ "$attempt" -lt "$retries" ]; then retry_sleep "$attempt"; fi
       continue
     }

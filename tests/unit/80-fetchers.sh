@@ -25,6 +25,9 @@ set -euo pipefail
 url="$1"
 out="$2"
 printf '%s\n' "$url" >> "${FAKE_CI_CALLS:?}"
+if [ -n "${FAKE_CI_STATUS:-}" ] && [ -n "${FETCHER_STATUS:-}" ]; then
+  printf '%s' "$FAKE_CI_STATUS" > "$FETCHER_STATUS"
+fi
 if [ "${FAKE_CI_RC:-0}" -ne 0 ]; then
   exit "${FAKE_CI_RC}"
 fi
@@ -130,6 +133,64 @@ run --expect db https://interstitial.test/base.db "$work/interstitial2.db" > /de
 check "the next call for that host starts at curl-impersonate" "0 0" \
   "$rc $(awk 'END { print NR + 0 }' "$work/fakecurl/calls")" \
   "the remembered client is tried first, so curl is not called again"
+
+#---------------------------------------------------------------------------#
+# A definitive refusal is not retried: the next client is the answer, not
+# another attempt of the same one. A status another attempt could change is.
+#---------------------------------------------------------------------------#
+behaviour 200 good.db
+rule refused 403 nonbody.html
+: > "$work/fakecurl/calls"
+: > "$work/ci.calls"
+rc=0
+run --expect db --retries 3 https://refused.test/base.db "$work/refused.db" > /dev/null 2>&1 || rc=$?
+check "a 403 is read by the next client" "0 $(sha256sum "$good_db" | cut -d ' ' -f 1)" \
+  "$rc $(sha256sum "$work/refused.db" | cut -d ' ' -f 1)" \
+  "fetchers/fetcher.sh --expect db URL OUT, against a host that answers curl with 403"
+check "a 403 is not retried" 1 "$(awk 'END { print NR + 0 }' "$work/fakecurl/calls")" \
+  "cat \$FAKE_CURL_DIR/calls; one curl call for a definitive 403"
+behaviour 200 good.db
+rule transient 503 nonbody.html
+: > "$work/fakecurl/calls"
+: > "$work/ci.calls"
+rc=0
+run --expect db --retries 2 https://transient.test/base.db "$work/transient.db" > /dev/null 2>&1 || rc=$?
+check "a 503 is retried" 2 "$(awk 'END { print NR + 0 }' "$work/fakecurl/calls")" \
+  "cat \$FAKE_CURL_DIR/calls; a 503 gets another attempt of the same client"
+behaviour 200 good.db
+rule throttled 429 nonbody.html
+: > "$work/fakecurl/calls"
+: > "$work/ci.calls"
+rc=0
+run --expect db --retries 2 https://throttled.test/base.db "$work/throttled.db" > /dev/null 2>&1 || rc=$?
+check "a 429 is retried" 2 "$(awk 'END { print NR + 0 }' "$work/fakecurl/calls")" \
+  "cat \$FAKE_CURL_DIR/calls; a 429 gets another attempt of the same client"
+behaviour 200 page.html
+printf '<!DOCTYPE html>\n<html><body>not the file</body></html>\n' > "$work/fakecurl/page.html"
+: > "$work/fakecurl/calls"
+: > "$work/ci.calls"
+rc=0
+run --expect any --retries 3 --no-cache https://page.test/a "$work/page3.out" > /dev/null 2>&1 || rc=$?
+check "a 200 that is an HTML document is not retried" 1 "$(awk 'END { print NR + 0 }' "$work/fakecurl/calls")" \
+  "cat \$FAKE_CURL_DIR/calls; an origin that answers a page is not retried"
+
+#---------------------------------------------------------------------------#
+# A non-curl client that reports its own status gets the same rule: a 403 is
+# left at once, not retried.
+#---------------------------------------------------------------------------#
+behaviour 200 good.db
+: > "$work/ci.calls"
+rc=0
+FAKE_CI_RC=1 FAKE_CI_STATUS=403 run --client curl-impersonate --expect any --retries 3 https://ci-refused.test/a "$work/ci-refused.out" > /dev/null 2>&1 || rc=$?
+check "a client that reports a 403 is not retried" "1 1" \
+  "$rc $(awk 'END { print NR + 0 }' "$work/ci.calls")" \
+  "FAKE_CI_RC=1 FAKE_CI_STATUS=403 fetchers/fetcher.sh --client curl-impersonate --retries 3 URL OUT"
+: > "$work/ci.calls"
+rc=0
+FAKE_CI_RC=1 FAKE_CI_STATUS=503 run --client curl-impersonate --expect any --retries 2 https://ci-transient.test/a "$work/ci-transient.out" > /dev/null 2>&1 || rc=$?
+check "a client that reports a 503 is retried" "1 2" \
+  "$rc $(awk 'END { print NR + 0 }' "$work/ci.calls")" \
+  "FAKE_CI_RC=1 FAKE_CI_STATUS=503 fetchers/fetcher.sh --client curl-impersonate --retries 2 URL OUT"
 
 #---------------------------------------------------------------------------#
 # A 404 is the server's answer, not a client that needs changing

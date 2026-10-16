@@ -9,6 +9,8 @@
 //   CLOAK_HEADLESS  1 (default) or 0 to show the window (see the tool's notes
 //                   on headed mode)
 //   CHROME_WAIT     seconds to wait for the origin (default 20)
+//   FETCHER_STATUS  a file to write the HTTP status to, when the caller wants
+//                   to tell a refusal from a transient failure
 //
 // Exit status: 0 read, 4 the server says the URL is absent, 1 anything else.
 import { launch } from "cloakbrowser";
@@ -83,6 +85,7 @@ try {
     fs.writeFileSync(out, Buffer.from(r.b64, "base64"));
     code = 0;
   }
+  if (process.env.FETCHER_STATUS) fs.writeFileSync(process.env.FETCHER_STATUS, String(r.status));
 } finally {
   await browser.close();
 }

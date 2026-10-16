@@ -30,7 +30,7 @@
 | `unit/45-dispatch-overdue.sh` | `scripts/dispatch-overdue` starts a workflow only when it is active and overdue |
 | `unit/60-status.sh` | `status-collect`, `status-render` and `check-staleness` on fixtures, also with one registry read that fails and with no registry read at all, and one upstream-only ppc target whose database is zstd at `base/$arch`; the synced badge, the times and the one script of the page, and the size table and badges |
 | `unit/70-plan.sh` | `scripts/plan` on a signed repository through the fake curl: a signature the keyring accepts leaves the target pending, and a signature of another key, a signature of the files database used for the database, and a database changed after it was signed refuse it |
-| `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural, `--sha256`, `--max-bytes`, `--header` and `--referer` checks, the HTML refusal, the retry backoff, the availability cache, the deadline, the dispatch of each client to its own program, `fetchers/self-check.sh`, `fetchers/install.sh --check`, the curl-impersonate asset choice, `fetchers/ci.sh` and `fetchers/drift.sh` |
+| `unit/80-fetchers.sh` | `fetchers/fetcher.sh` against a curl stand-in and faked curl-impersonate, node and venv-python clients: client selection, the per-host fallback order, the structural, `--sha256`, `--max-bytes`, `--header` and `--referer` checks, the HTML refusal, the retry of a transient failure and the leave-at-once of a definitive one, the availability cache, the deadline, the dispatch of each client to its own program, `fetchers/self-check.sh`, `fetchers/install.sh --check`, the curl-impersonate asset choice, `fetchers/ci.sh` and `fetchers/drift.sh` |
 | `integration/10-pipeline.sh` | the whole mirror against its own registry and upstream |
 | `integration/20-client.sh` | the wrapper against its own registry, through faulty proxies |
 | `worker/10-node.sh` | `node --test 'worker/test/*.test.js'` |
@@ -222,6 +222,10 @@ The tree itself is never changed. An integration fault runs with its own registr
 | unit/80-fetchers | the `body_validate` desc pipeline reads with `grep -q`, so tar ends by SIGPIPE and `pipefail` reads the whole check as failed | not ok: `a database with an early desc member is read`, and the fetcher logged `bad-body: the archive holds no package desc member` |
 | unit/80-fetchers | the host preference is not written after a client reads a host | not ok: `the client that read the host is remembered`, `the next call for that host starts at curl-impersonate` |
 | unit/80-fetchers | a 403 body is taken as an answer | not ok: `a 403 from curl falls back to curl-impersonate` |
+| unit/80-fetchers | a definitive 403 is retried like a transient failure | not ok: `a 403 is not retried` (3 curl calls for one 403) |
+| unit/80-fetchers | a 200 that is a page is retried like a transient failure | not ok: `a 200 that is an HTML document is not retried` (3 curl calls for one page) |
+| unit/80-fetchers | a 429 is left at once like a definitive refusal | not ok: `a 429 is retried` (1 curl call for a 429) |
+| unit/80-fetchers | only curl reports its status, so a browser client's 403 is retried | not ok: `a client that reports a 403 is not retried` (3 curl-impersonate calls for one 403) |
 | unit/80-fetchers | `drift.sh` does not read `.tag_name` | not ok: `drift reads the newest release tag`, `drift serves the value from its cache` |
 | unit/80-fetchers | `client_run` drops the headers, so the request carries none | not ok: `an extra header reaches curl` |
 | unit/80-fetchers | `drift.sh` only loads the cached values when the cache is fresh, so a stale cache whose lookup fails moves backwards | not ok: `a lookup that fails keeps the cached value` (rc 1, no value) |

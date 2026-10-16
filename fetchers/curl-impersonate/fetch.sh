@@ -11,6 +11,8 @@
 #   CURL_IMPERSONATE_DIR  the directory of the profile wrappers (default: the
 #                         dist/ beside this file)
 #   CURL_IMPERSONATE_BIN  the wrapper to use (default: the first curl_chrome*)
+#   FETCHER_STATUS        a file to write the HTTP status to, when the caller
+#                         wants to tell a refusal from a transient failure
 #
 # Exit status: 0 read, 4 the server says the URL is absent, 1 anything else.
 set -euo pipefail
@@ -59,6 +61,9 @@ code="$("$dir/$bin" -q --silent --show-error --location --max-redirs 5 \
   --connect-timeout "${FETCHER_CONNECT_TIMEOUT:-20}" \
   --max-time "${FETCHER_MAX_TIME:-300}" "${hdr[@]}" \
   --output "$out" --write-out '%{http_code}' "$url")" || rc=$?
+if [ -n "${FETCHER_STATUS:-}" ]; then
+  printf '%s' "$code" > "$FETCHER_STATUS"
+fi
 if [ "$rc" -ne 0 ]; then
   rm -f "$out"
   exit 1

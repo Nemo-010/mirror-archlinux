@@ -5,7 +5,8 @@
 
 The request runs in the page, so it uses the patched engine's own network
 stack and client profile. Exit status: 0 read, 4 the server says the URL is
-absent, 1 anything else.
+absent, 1 anything else. FETCHER_STATUS names a file the HTTP status is
+written to, when the caller wants to tell a refusal from a transient failure.
 """
 import base64
 import os
@@ -52,6 +53,10 @@ def main() -> int:
             sys.stderr.write("playwright: origin visit: %s\n" % exc)
         r = page.evaluate(FETCH, {"u": url, "ms": max_ms, "hdrs": extra})
     status = r.get("status")
+    status_file = os.environ.get("FETCHER_STATUS")
+    if status_file:
+        with open(status_file, "w") as fh:
+            fh.write(str(status))
     if status in (404, 410):
         sys.stderr.write("playwright: status %s\n" % status)
         return 4

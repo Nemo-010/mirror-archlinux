@@ -13,6 +13,8 @@
 //   CHROME_UA    user agent (default: derived from the running build)
 //   CHROME_WAIT  seconds to wait for the origin to reach readyState complete
 //                (default 20)
+//   FETCHER_STATUS  a file to write the HTTP status to, when the caller wants
+//                   to tell a refusal from a transient failure
 //
 // Exit status: 0 read, 4 the server says the URL is absent, 1 anything else.
 import { chromium } from "playwright";
@@ -103,6 +105,7 @@ try {
     fs.writeFileSync(out, Buffer.from(r.b64, "base64"));
     code = 0;
   }
+  if (process.env.FETCHER_STATUS) fs.writeFileSync(process.env.FETCHER_STATUS, String(r.status));
 } finally {
   await browser.close();
 }
