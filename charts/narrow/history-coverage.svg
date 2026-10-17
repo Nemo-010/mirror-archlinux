@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="429" viewBox="0 0 420 429" role="img" aria-labelledby="title desc">
+<title id="title">Coverage, last 30 days</title>
+<desc id="desc">Share of upstream files in the mirror per architecture over time. A repository that a run could not read counts with its last measured files. With more than 2 days of history, one point per 6 hours, the last value of each.</desc>
+<style>.bg{fill:#fcfcfb;stroke:rgba(11,11,11,.10)}text{font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif}.tt{font-size:16px;font-weight:600;fill:#0b0b0b}.hd{font-size:30px;font-weight:600;fill:#0b0b0b}.sub{font-size:13px;fill:#52514e}.lb{font-size:12px;fill:#0b0b0b}.gr{font-size:12px;font-weight:600;fill:#52514e;paint-order:stroke;stroke:#fcfcfb;stroke-width:5px;stroke-linejoin:round}.vl{font-size:12px;fill:#0b0b0b;font-variant-numeric:tabular-nums}.mu{fill:#6f6e69}.lg{font-size:12px;fill:#52514e}.tk{font-size:11px;fill:#6f6e69;font-variant-numeric:tabular-nums}.ax{font-size:12px;fill:#52514e}.note{font-size:13px;fill:#6f6e69}.grid{stroke:#e9e8e3;stroke-width:1}.base{stroke:#c3c2b7;stroke-width:1}.ref{stroke:#7d7b75;stroke-width:1}.lead{stroke:#c3c2b7;stroke-width:1;fill:none}.track{fill:#ebeae5}.ring{stroke:#fcfcfb;stroke-width:2}.cut{stroke:#fcfcfb;stroke-width:2}.line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}.hollow{fill:none;stroke:#898781;stroke-width:1.5}.s1{fill:#2a78d6}.l1{stroke:#2a78d6}.s2{fill:#eb6834}.l2{stroke:#eb6834}.s3{fill:#1baf7a}.l3{stroke:#1baf7a}.s4{fill:#eda100}.l4{stroke:#eda100}.s5{fill:#e87ba4}.l5{stroke:#e87ba4}.s6{fill:#008300}.l6{stroke:#008300}.s7{fill:#4a3aa7}.l7{stroke:#4a3aa7}.s8{fill:#e34948}.l8{stroke:#e34948}.s0{fill:#a3a29c}.l0{stroke:#a3a29c}.st-good{fill:#0ca30c}.st-warning{fill:#fab219}.st-critical{fill:#d03b3b}.st-none{fill:#898781}.st-unknown{fill:#898781}@media (prefers-color-scheme:dark){.bg{fill:#1a1a19;stroke:rgba(255,255,255,.10)}.tt,.hd,.lb,.vl{fill:#ffffff}.sub,.gr,.ax,.lg{fill:#c3c2b7}.tk,.note,.mu{fill:#9a9890}.grid{stroke:#2a2a28}.base,.lead{stroke:#3d3d3a}.ref{stroke:#9a9890}.track{fill:#2e2e2c}.ring,.cut,.gr{stroke:#1a1a19}.s1{fill:#3987e5}.l1{stroke:#3987e5}.s2{fill:#d95926}.l2{stroke:#d95926}.s3{fill:#199e70}.l3{stroke:#199e70}.s4{fill:#c98500}.l4{stroke:#c98500}.s5{fill:#d55181}.l5{stroke:#d55181}.s6{fill:#008300}.l6{stroke:#008300}.s7{fill:#9085e9}.l7{stroke:#9085e9}.s8{fill:#e66767}.l8{stroke:#e66767}.s0{fill:#6b6a65}.l0{stroke:#6b6a65}}</style>
+<rect class="bg" x="0.5" y="0.5" width="419" height="428" rx="12"/>
+<text x="24.0" y="40.0" class="tt">Coverage, last 30 days</text>
+<text x="24.0" y="82.0" class="hd">99.3%</text>
+<text x="24.0" y="101.0" class="sub">of upstream files in the mirror now, in 15 of 21</text>
+<text x="24.0" y="120.0" class="sub">repositories. One line per architecture, since Oct 14, 17:31</text>
+<text x="24.0" y="139.0" class="sub">UTC.</text>
+<path d="M23.0 165.0h12" class="line l1"/>
+<text x="40.0" y="169.0" class="lg">x86_64</text>
+<path d="M97.8 165.0h12" class="line l2"/>
+<text x="114.8" y="169.0" class="lg">aarch64</text>
+<path d="M178.1 165.0h12" class="line l3"/>
+<text x="195.1" y="169.0" class="lg">armv7h</text>
+<path d="M255.3 165.0h12" class="line l4"/>
+<text x="272.3" y="169.0" class="lg">loong64</text>
+<path d="M332.8 165.0h12" class="line l5"/>
+<text x="349.8" y="169.0" class="lg">riscv64</text>
+<path d="M70.0 365.0H294.2" class="base"/>
+<text x="62.0" y="369.0" class="tk" text-anchor="end">0%</text>
+<path d="M70.0 280.0H294.2" class="grid"/>
+<text x="62.0" y="284.0" class="tk" text-anchor="end">50%</text>
+<path d="M70.0 195.0H294.2" class="grid"/>
+<text x="62.0" y="199.0" class="tk" text-anchor="end">100%</text>
+<path d="M159.6 365.0v4" class="base"/>
+<text x="159.6" y="383.0" class="tk" text-anchor="middle">Oct 16</text>
+<path d="M70.0 361.7L89.0 195.0L93.9 195.1L116.9 365.0L131.5 197.2L153.2 195.0L174.8 195.0L193.0 195.0L208.8 195.0L229.1 195.0L245.2 195.0L261.7 195.0L279.2 195.1L294.2 199.6" class="line l1"><title>x86_64</title></path>
+<path d="M70.0 365.0L89.0 195.0L93.9 195.3L116.9 365.0L131.5 195.6L153.2 195.0L174.8 195.0L193.0 195.0L208.8 195.0L229.1 195.0L245.2 195.0L261.7 195.0L279.2 195.0L294.2 195.0" class="line l2"><title>aarch64</title></path>
+<path d="M70.0 365.0L89.0 195.0L93.9 195.2L116.9 365.0L131.5 195.0L153.2 195.0L174.8 195.0L193.0 195.0L208.8 195.0L229.1 195.0L245.2 195.0L261.7 195.0L279.2 195.0L294.2 195.0" class="line l3"><title>armv7h</title></path>
+<path d="M70.0 365.0L89.0 195.0L93.9 195.0L116.9 365.0L131.5 361.6L153.2 195.0L174.8 195.0L193.0 195.0L208.8 195.0L229.1 195.0L245.2 195.0L261.7 195.0L279.2 195.0L294.2 195.0" class="line l4"><title>loong64</title></path>
+<path d="M70.0 365.0L89.0 195.2L93.9 195.0L116.9 365.0L131.5 196.3L153.2 195.2L174.8 195.0L193.0 195.0L208.8 195.0L229.1 195.0L245.2 195.0L261.7 195.0L279.2 195.0L294.2 195.2" class="line l5"><title>riscv64</title></path>
+<path d="M300.2 195.0L306.2 210.0" class="lead"/>
+<path d="M300.2 195.0L306.2 225.0" class="lead"/>
+<path d="M300.2 195.2L306.2 240.0" class="lead"/>
+<path d="M300.2 199.6L306.2 255.0" class="lead"/>
+<circle cx="294.2" cy="195.0" r="4" class="s2 ring"><title>aarch64 100%</title></circle>
+<text x="310.2" y="199.0" class="vl">aarch64<tspan class="mu" dx="5">100%</tspan></text>
+<circle cx="294.2" cy="195.0" r="4" class="s3 ring"><title>armv7h 100%</title></circle>
+<text x="310.2" y="214.0" class="vl">armv7h<tspan class="mu" dx="5">100%</tspan></text>
+<circle cx="294.2" cy="195.0" r="4" class="s4 ring"><title>loong64 100%</title></circle>
+<text x="310.2" y="229.0" class="vl">loong64<tspan class="mu" dx="5">100%</tspan></text>
+<circle cx="294.2" cy="195.2" r="4" class="s5 ring"><title>riscv64 99.8%</title></circle>
+<text x="310.2" y="244.0" class="vl">riscv64<tspan class="mu" dx="5">99.8%</tspan></text>
+<circle cx="294.2" cy="199.6" r="4" class="s1 ring"><title>x86_64 97.2%</title></circle>
+<text x="310.2" y="259.0" class="vl">x86_64<tspan class="mu" dx="5">97.2%</tspan></text>
+<text x="182.1" y="407.0" class="ax" text-anchor="middle">Time, UTC</text>
+<text class="ax" text-anchor="middle" transform="translate(30.0 280.0) rotate(-90)">Share of upstream files</text>
+</svg>
