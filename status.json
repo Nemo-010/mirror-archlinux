@@ -1,0 +1,1325 @@
+{
+ "schema": 1,
+ "generated": "2026-10-31T13:54:06Z",
+ "generated_epoch": 1793454846,
+ "source": "https://github.com/Nemo-010/mirror-archlinux",
+ "site_url": "https://nemo-010.github.io/mirror-archlinux/",
+ "registry": "ghcr.io",
+ "namespace": "nemo-010/mirror-archlinux",
+ "worker_url": "https://ghcr.mirror.archlinux.pkgforge.dev",
+ "sync": {
+  "workflow": ".github/workflows/sync.yml",
+  "interval_minutes": 180,
+  "tolerance_days": 3
+ },
+ "summary": {
+  "targets": 21,
+  "promoted": 15,
+  "current": 12,
+  "measured": 15,
+  "mirror_unread": 0,
+  "upstream_files": 71930,
+  "upstream_bytes": 398849467735,
+  "mirrored_files": 71755,
+  "mirrored_bytes": 397329580873,
+  "coverage_files": 0.9975670791046851,
+  "coverage_bytes": 0.9961893220752401,
+  "oldest_age_seconds": 1398407,
+  "newest_age_seconds": 5625,
+  "last_synced": "2026-10-31T12:23:05Z"
+ },
+ "worker": {
+  "probed": true,
+  "ok": false,
+  "probes": 36,
+  "failures": 6,
+  "failed_runs": 214,
+  "failing_since": "2026-10-15T09:27:18Z",
+  "failing_seconds": 1398408,
+  "down": true,
+  "down_after": {
+   "runs": 2,
+   "seconds": 3000
+  },
+  "median_seconds": 0.224001
+ },
+ "ghcr": {
+  "median_manifest_seconds": 0.159556
+ },
+ "targets": [
+  {
+   "target": "aarch64-alarm",
+   "arch": "aarch64",
+   "repo": "alarm",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/aarch64/alarm",
+   "upstream": {
+    "ok": true,
+    "server": "https://fl.us.mirror.archlinuxarm.org/aarch64/alarm",
+    "sha256": "72637e489a049c46b17c4d43cdac5739a83d6a4b7663be8892181193b01e62d1",
+    "files": 75,
+    "bytes": 143067436,
+    "newest_builddate": 1793404735,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.169731,
+    "fetched": "2026-10-31T05:34:53Z",
+    "created": "2026-10-31T05:37:04Z",
+    "run": "41173159176",
+    "db_sha256": "72637e489a049c46b17c4d43cdac5739a83d6a4b7663be8892181193b01e62d1",
+    "files": 75,
+    "bytes": 143067436,
+    "newest_builddate": 1793404735
+   },
+   "current": true,
+   "coverage": {
+    "files": 75,
+    "of_files": 75,
+    "ratio_files": 1,
+    "bytes": 143067436,
+    "of_bytes": 143067436,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 29953,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/aarch64/alarm/alarm.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.537382,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/aarch64/alarm/aml-libs-c2-r9.296f39b-1-aarch64.pkg.tar.xz",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.221887,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "aarch64-aur",
+   "arch": "aarch64",
+   "repo": "aur",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/aarch64/aur",
+   "upstream": {
+    "ok": true,
+    "server": "https://fl.us.mirror.archlinuxarm.org/aarch64/aur",
+    "sha256": "263b04baaf9e27f6bc7840455a2bf65bf9b7f9cad0be5efce0ca3650eb634024",
+    "files": 12,
+    "bytes": 10992812,
+    "newest_builddate": 1791738197,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.168722,
+    "fetched": "2026-10-15T09:27:19Z",
+    "created": "2026-10-15T09:30:14Z",
+    "run": "38713030812",
+    "db_sha256": "263b04baaf9e27f6bc7840455a2bf65bf9b7f9cad0be5efce0ca3650eb634024",
+    "files": 12,
+    "bytes": 10992812,
+    "newest_builddate": 1791738197
+   },
+   "current": true,
+   "coverage": {
+    "files": 12,
+    "of_files": 12,
+    "ratio_files": 1,
+    "bytes": 10992812,
+    "of_bytes": 10992812,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 1398407,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/aarch64/aur/aur.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.304515,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/aarch64/aur/autojump-rs-git-0.5.1.r14.g65abf11-4-any.pkg.tar.xz",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.261485,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "aarch64-core",
+   "arch": "aarch64",
+   "repo": "core",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/aarch64/core",
+   "upstream": {
+    "ok": true,
+    "server": "https://fl.us.mirror.archlinuxarm.org/aarch64/core",
+    "sha256": "83a1e11a570751cd0ccbf4318fd1cf01b4240a461aed874f8eada0a7a980fd0d",
+    "files": 313,
+    "bytes": 1578496232,
+    "newest_builddate": 1793397832,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.161985,
+    "fetched": "2026-10-31T05:34:53Z",
+    "created": "2026-10-31T05:37:14Z",
+    "run": "41173159176",
+    "db_sha256": "83a1e11a570751cd0ccbf4318fd1cf01b4240a461aed874f8eada0a7a980fd0d",
+    "files": 313,
+    "bytes": 1578496232,
+    "newest_builddate": 1793397832
+   },
+   "current": true,
+   "coverage": {
+    "files": 313,
+    "of_files": 313,
+    "ratio_files": 1,
+    "bytes": 1578496232,
+    "of_bytes": 1578496232,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 29953,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/aarch64/core/core.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.22058,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/aarch64/core/acl-2.4.0-1-aarch64.pkg.tar.xz",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.148722,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "aarch64-extra",
+   "arch": "aarch64",
+   "repo": "extra",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/aarch64/extra",
+   "upstream": {
+    "ok": true,
+    "server": "https://fl.us.mirror.archlinuxarm.org/aarch64/extra",
+    "sha256": "02b8911c6280b40a20dd2ef87e3f6e9dc28584d19adc0af2eac1591b2fb6d0cf",
+    "files": 13117,
+    "bytes": 58201458840,
+    "newest_builddate": 1793416486,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.166261,
+    "fetched": "2026-10-31T05:34:53Z",
+    "created": "2026-10-31T05:37:48Z",
+    "run": "41173159176",
+    "db_sha256": "02b8911c6280b40a20dd2ef87e3f6e9dc28584d19adc0af2eac1591b2fb6d0cf",
+    "files": 13117,
+    "bytes": 58201458840,
+    "newest_builddate": 1793416486
+   },
+   "current": true,
+   "coverage": {
+    "files": 13117,
+    "of_files": 13117,
+    "ratio_files": 1,
+    "bytes": 58201458840,
+    "of_bytes": 58201458840,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 29953,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/aarch64/extra/extra.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.222241,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/aarch64/extra/389-ds-base-3.3.1-1-aarch64.pkg.tar.xz",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.143147,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "armv7h-alarm",
+   "arch": "armv7h",
+   "repo": "alarm",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/armv7h/alarm",
+   "upstream": {
+    "ok": true,
+    "server": "https://fl.us.mirror.archlinuxarm.org/armv7h/alarm",
+    "sha256": "ea30decad654d3e1c6740aba70ecf802d718c767850376613aee052567e1da17",
+    "files": 125,
+    "bytes": 191621276,
+    "newest_builddate": 1793407877,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.157929,
+    "fetched": "2026-10-31T05:34:53Z",
+    "created": "2026-10-31T05:37:04Z",
+    "run": "41173159176",
+    "db_sha256": "ea30decad654d3e1c6740aba70ecf802d718c767850376613aee052567e1da17",
+    "files": 125,
+    "bytes": 191621276,
+    "newest_builddate": 1793407877
+   },
+   "current": true,
+   "coverage": {
+    "files": 125,
+    "of_files": 125,
+    "ratio_files": 1,
+    "bytes": 191621276,
+    "of_bytes": 191621276,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 29953,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/armv7h/alarm/alarm.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.239195,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/armv7h/alarm/aml-libs-c1-r11.820b12a-5-armv7h.pkg.tar.xz",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.15023,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "armv7h-aur",
+   "arch": "armv7h",
+   "repo": "aur",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/armv7h/aur",
+   "upstream": {
+    "ok": true,
+    "server": "https://fl.us.mirror.archlinuxarm.org/armv7h/aur",
+    "sha256": "1a9b7accaf9e1662dc1904b3fde5fd3fcd8d718498944b0452e7aecb1d43d3ee",
+    "files": 11,
+    "bytes": 10670656,
+    "newest_builddate": 1791733364,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.166738,
+    "fetched": "2026-10-15T09:27:19Z",
+    "created": "2026-10-15T09:33:07Z",
+    "run": "38713030812",
+    "db_sha256": "1a9b7accaf9e1662dc1904b3fde5fd3fcd8d718498944b0452e7aecb1d43d3ee",
+    "files": 11,
+    "bytes": 10670656,
+    "newest_builddate": 1791733364
+   },
+   "current": true,
+   "coverage": {
+    "files": 11,
+    "of_files": 11,
+    "ratio_files": 1,
+    "bytes": 10670656,
+    "of_bytes": 10670656,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 1398407,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/armv7h/aur/aur.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.447341,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/armv7h/aur/arm-mem-git-39.b48ea15-1-armv7h.pkg.tar.xz",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.258412,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "armv7h-core",
+   "arch": "armv7h",
+   "repo": "core",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/armv7h/core",
+   "upstream": {
+    "ok": true,
+    "server": "https://fl.us.mirror.archlinuxarm.org/armv7h/core",
+    "sha256": "fd82c518e35cd70edd8b48f99b4653a0ac8a9d11f7eddcd29236152e546b4fa1",
+    "files": 326,
+    "bytes": 1623284856,
+    "newest_builddate": 1793397869,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.167479,
+    "fetched": "2026-10-31T05:34:53Z",
+    "created": "2026-10-31T05:38:49Z",
+    "run": "41173159176",
+    "db_sha256": "fd82c518e35cd70edd8b48f99b4653a0ac8a9d11f7eddcd29236152e546b4fa1",
+    "files": 326,
+    "bytes": 1623284856,
+    "newest_builddate": 1793397869
+   },
+   "current": true,
+   "coverage": {
+    "files": 326,
+    "of_files": 326,
+    "ratio_files": 1,
+    "bytes": 1623284856,
+    "of_bytes": 1623284856,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 29953,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/armv7h/core/core.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.234432,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/armv7h/core/acl-2.4.0-1-armv7h.pkg.tar.xz",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.247112,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "armv7h-extra",
+   "arch": "armv7h",
+   "repo": "extra",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/armv7h/extra",
+   "upstream": {
+    "ok": true,
+    "server": "https://fl.us.mirror.archlinuxarm.org/armv7h/extra",
+    "sha256": "6d6e0d6eb3d081ae62799befb6b95d490e18e8f592450a268c9107a28230e86a",
+    "files": 12660,
+    "bytes": 45984459168,
+    "newest_builddate": 1793409054,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.176734,
+    "fetched": "2026-10-31T05:34:53Z",
+    "created": "2026-10-31T05:39:35Z",
+    "run": "41173159176",
+    "db_sha256": "6d6e0d6eb3d081ae62799befb6b95d490e18e8f592450a268c9107a28230e86a",
+    "files": 12660,
+    "bytes": 45984459168,
+    "newest_builddate": 1793409054
+   },
+   "current": true,
+   "coverage": {
+    "files": 12660,
+    "of_files": 12660,
+    "ratio_files": 1,
+    "bytes": 45984459168,
+    "of_bytes": 45984459168,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 29953,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/armv7h/extra/extra.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.472108,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/armv7h/extra/389-ds-base-2.4.1-2-armv7h.pkg.tar.xz",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.227571,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "loong64-core",
+   "arch": "loong64",
+   "repo": "core",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/loong64/core",
+   "upstream": {
+    "ok": true,
+    "server": "https://loongarchlinux.lcpu.dev/loongarch/archlinux/core/os/loong64",
+    "sha256": "4b85766a81760b014ab7acee595dfbb4939c62db7898fe957d516a21463a4017",
+    "files": 295,
+    "bytes": 1900683705,
+    "newest_builddate": 1793408605,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.155629,
+    "fetched": "2026-10-31T12:20:21Z",
+    "created": "2026-10-31T12:22:41Z",
+    "run": "41200639386",
+    "db_sha256": "4b85766a81760b014ab7acee595dfbb4939c62db7898fe957d516a21463a4017",
+    "files": 295,
+    "bytes": 1900683705,
+    "newest_builddate": 1793408605
+   },
+   "current": true,
+   "coverage": {
+    "files": 295,
+    "of_files": 295,
+    "ratio_files": 1,
+    "bytes": 1900683705,
+    "of_bytes": 1900683705,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 5625,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/loong64/core/core.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.395758,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/loong64/core/acl-2.4.0-1-loong64.pkg.tar.zst",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.150633,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "loong64-extra",
+   "arch": "loong64",
+   "repo": "extra",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/loong64/extra",
+   "upstream": {
+    "ok": true,
+    "server": "https://loongarchlinux.lcpu.dev/loongarch/archlinux/extra/os/loong64",
+    "sha256": "faa38d9c655aedadc482ce23080484cecf88b6d396f43f312b3ba8cd349899d5",
+    "files": 14255,
+    "bytes": 78326933138,
+    "newest_builddate": 1793441978,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.159556,
+    "fetched": "2026-10-31T05:34:53Z",
+    "created": "2026-10-31T05:40:50Z",
+    "run": "41173159176",
+    "db_sha256": "4b5fe30512ae5d89e0635c222feea45f8f3db17794e757f0a3f06a8c1458c01a",
+    "files": 14251,
+    "bytes": 78298575021,
+    "newest_builddate": 1793369352
+   },
+   "current": false,
+   "coverage": {
+    "files": 14111,
+    "of_files": 14255,
+    "ratio_files": 0.9898982813048053,
+    "bytes": 77358942632,
+    "of_bytes": 78326933138,
+    "ratio_bytes": 0.9876416646583807,
+    "missing": 144,
+    "missing_names": [
+     "composer-2.11.1-1-any.pkg.tar.zst",
+     "croc-1:11.6.0-1-loong64.pkg.tar.zst",
+     "deepin-calculator-6.5.41-1-loong64.pkg.tar.zst",
+     "deepin-compressor-6.5.37-1-loong64.pkg.tar.zst",
+     "deepin-control-center-6.1.97-1-loong64.pkg.tar.zst",
+     "deepin-desktop-base-2:2026.10.28-1-any.pkg.tar.zst",
+     "deepin-downloader-6.0.28-1-loong64.pkg.tar.zst",
+     "deepin-draw-6.5.44-1-loong64.pkg.tar.zst",
+     "deepin-file-manager-1:6.5.49.2-1-loong64.pkg.tar.zst",
+     "deepin-font-manager-6.5.44-1-loong64.pkg.tar.zst",
+     "deepin-grand-search-6.0.23-1-loong64.pkg.tar.zst",
+     "deepin-image-viewer-6.0.36-1-loong64.pkg.tar.zst",
+     "deepin-movie-1:6.5.31-1-loong64.pkg.tar.zst",
+     "deepin-network-core-2.0.107-1-loong64.pkg.tar.zst",
+     "deepin-scanner-0.1.26-1-loong64.pkg.tar.zst",
+     "deepin-screen-recorder-6.6.1-1-loong64.pkg.tar.zst",
+     "deepin-session-shell-6.0.57-1-loong64.pkg.tar.zst",
+     "deepin-shell-2.0.61-1-loong64.pkg.tar.zst",
+     "deepin-terminal-6.5.41-1-loong64.pkg.tar.zst",
+     "deepin-util-dfm-1:1.3.33-1-loong64.pkg.tar.zst"
+    ]
+   },
+   "age_seconds": 29953,
+   "lag_seconds": 72626,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/loong64/extra/extra.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.230131,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/loong64/extra/0ad-data-0.28.0-1-any.pkg.tar.zst",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.167537,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "powerpc-base",
+   "arch": "powerpc",
+   "repo": "base",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/powerpc/base",
+   "upstream": {
+    "ok": false,
+    "server": null,
+    "sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null,
+    "tried": [
+     {
+      "server": "https://repo.archlinuxpower.org/base/powerpc",
+      "result": "HTTP 403"
+     }
+    ],
+    "error": "no db_server answered 200 for base.db"
+   },
+   "mirror": {
+    "state": "absent",
+    "error": null,
+    "manifest_code": 404,
+    "manifest_seconds": 0.128666,
+    "fetched": null,
+    "created": null,
+    "run": null,
+    "db_sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null
+   },
+   "current": null,
+   "coverage": null,
+   "age_seconds": null,
+   "lag_seconds": null,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/powerpc/base/base.db",
+     "code": 302,
+     "expect": 404,
+     "seconds": 0.225761,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": false,
+     "error": "HTTP 302, expected 404"
+    },
+    "package": null
+   }
+  },
+  {
+   "target": "powerpc-base-any",
+   "arch": "powerpc",
+   "repo": "base-any",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/powerpc/base-any",
+   "upstream": {
+    "ok": false,
+    "server": null,
+    "sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null,
+    "tried": [
+     {
+      "server": "https://repo.archlinuxpower.org/base/any",
+      "result": "HTTP 403"
+     }
+    ],
+    "error": "no db_server answered 200 for base-any.db"
+   },
+   "mirror": {
+    "state": "absent",
+    "error": null,
+    "manifest_code": 404,
+    "manifest_seconds": 0.126424,
+    "fetched": null,
+    "created": null,
+    "run": null,
+    "db_sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null
+   },
+   "current": null,
+   "coverage": null,
+   "age_seconds": null,
+   "lag_seconds": null,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/powerpc/base-any/base-any.db",
+     "code": 302,
+     "expect": 404,
+     "seconds": 0.209107,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": false,
+     "error": "HTTP 302, expected 404"
+    },
+    "package": null
+   }
+  },
+  {
+   "target": "powerpc64-base",
+   "arch": "powerpc64",
+   "repo": "base",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/powerpc64/base",
+   "upstream": {
+    "ok": false,
+    "server": null,
+    "sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null,
+    "tried": [
+     {
+      "server": "https://repo.archlinuxpower.org/base/powerpc64",
+      "result": "HTTP 403"
+     }
+    ],
+    "error": "no db_server answered 200 for base.db"
+   },
+   "mirror": {
+    "state": "absent",
+    "error": null,
+    "manifest_code": 404,
+    "manifest_seconds": 0.135901,
+    "fetched": null,
+    "created": null,
+    "run": null,
+    "db_sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null
+   },
+   "current": null,
+   "coverage": null,
+   "age_seconds": null,
+   "lag_seconds": null,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/powerpc64/base/base.db",
+     "code": 302,
+     "expect": 404,
+     "seconds": 0.208029,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": false,
+     "error": "HTTP 302, expected 404"
+    },
+    "package": null
+   }
+  },
+  {
+   "target": "powerpc64-base-any",
+   "arch": "powerpc64",
+   "repo": "base-any",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/powerpc64/base-any",
+   "upstream": {
+    "ok": false,
+    "server": null,
+    "sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null,
+    "tried": [
+     {
+      "server": "https://repo.archlinuxpower.org/base/any",
+      "result": "HTTP 403"
+     }
+    ],
+    "error": "no db_server answered 200 for base-any.db"
+   },
+   "mirror": {
+    "state": "absent",
+    "error": null,
+    "manifest_code": 404,
+    "manifest_seconds": 0.121426,
+    "fetched": null,
+    "created": null,
+    "run": null,
+    "db_sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null
+   },
+   "current": null,
+   "coverage": null,
+   "age_seconds": null,
+   "lag_seconds": null,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/powerpc64/base-any/base-any.db",
+     "code": 302,
+     "expect": 404,
+     "seconds": 0.329321,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": false,
+     "error": "HTTP 302, expected 404"
+    },
+    "package": null
+   }
+  },
+  {
+   "target": "powerpc64le-base",
+   "arch": "powerpc64le",
+   "repo": "base",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/powerpc64le/base",
+   "upstream": {
+    "ok": false,
+    "server": null,
+    "sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null,
+    "tried": [
+     {
+      "server": "https://repo.archlinuxpower.org/base/powerpc64le",
+      "result": "HTTP 403"
+     }
+    ],
+    "error": "no db_server answered 200 for base.db"
+   },
+   "mirror": {
+    "state": "absent",
+    "error": null,
+    "manifest_code": 404,
+    "manifest_seconds": 0.124882,
+    "fetched": null,
+    "created": null,
+    "run": null,
+    "db_sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null
+   },
+   "current": null,
+   "coverage": null,
+   "age_seconds": null,
+   "lag_seconds": null,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/powerpc64le/base/base.db",
+     "code": 302,
+     "expect": 404,
+     "seconds": 0.20678,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": false,
+     "error": "HTTP 302, expected 404"
+    },
+    "package": null
+   }
+  },
+  {
+   "target": "powerpc64le-base-any",
+   "arch": "powerpc64le",
+   "repo": "base-any",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/powerpc64le/base-any",
+   "upstream": {
+    "ok": false,
+    "server": null,
+    "sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null,
+    "tried": [
+     {
+      "server": "https://repo.archlinuxpower.org/base/any",
+      "result": "HTTP 403"
+     }
+    ],
+    "error": "no db_server answered 200 for base-any.db"
+   },
+   "mirror": {
+    "state": "absent",
+    "error": null,
+    "manifest_code": 404,
+    "manifest_seconds": 0.128629,
+    "fetched": null,
+    "created": null,
+    "run": null,
+    "db_sha256": null,
+    "files": null,
+    "bytes": null,
+    "newest_builddate": null
+   },
+   "current": null,
+   "coverage": null,
+   "age_seconds": null,
+   "lag_seconds": null,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/powerpc64le/base-any/base-any.db",
+     "code": 302,
+     "expect": 404,
+     "seconds": 0.32917,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": false,
+     "error": "HTTP 302, expected 404"
+    },
+    "package": null
+   }
+  },
+  {
+   "target": "riscv64-core",
+   "arch": "riscv64",
+   "repo": "core",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/riscv64/core",
+   "upstream": {
+    "ok": true,
+    "server": "https://riscv.mirror.pkgbuild.com/repo/core",
+    "sha256": "e57a91da83ed151da3e9b9aeb89e6bf313be2a9826488ff5460f7a886969f507",
+    "files": 294,
+    "bytes": 2116993566,
+    "newest_builddate": 1793391477,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.160975,
+    "fetched": "2026-10-30T22:15:41Z",
+    "created": "2026-10-30T22:18:33Z",
+    "run": "41136912274",
+    "db_sha256": "e57a91da83ed151da3e9b9aeb89e6bf313be2a9826488ff5460f7a886969f507",
+    "files": 294,
+    "bytes": 2116993566,
+    "newest_builddate": 1793391477
+   },
+   "current": true,
+   "coverage": {
+    "files": 294,
+    "of_files": 294,
+    "ratio_files": 1,
+    "bytes": 2116993566,
+    "of_bytes": 2116993566,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 56305,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/riscv64/core/core.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.22014,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/riscv64/core/acl-2.4.0-1-riscv64.pkg.tar.zst",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.150221,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "riscv64-extra",
+   "arch": "riscv64",
+   "repo": "extra",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/riscv64/extra",
+   "upstream": {
+    "ok": true,
+    "server": "https://riscv.mirror.pkgbuild.com/repo/extra",
+    "sha256": "d442e02c30789693c5ebdf89dd49e197750a279e23e2d4701f83ed3ae5c2c3de",
+    "files": 14790,
+    "bytes": 90109325999,
+    "newest_builddate": 1793440232,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.174664,
+    "fetched": "2026-10-31T12:20:21Z",
+    "created": "2026-10-31T12:22:48Z",
+    "run": "41200639386",
+    "db_sha256": "5a49bd2f766d9fe1cea97c090e7e229d3088f034f34bc2b448f6911bae92082c",
+    "files": 14790,
+    "bytes": 90109233682,
+    "newest_builddate": 1793440232
+   },
+   "current": false,
+   "coverage": {
+    "files": 14789,
+    "of_files": 14790,
+    "ratio_files": 0.9999323867478026,
+    "bytes": 90003890427,
+    "of_bytes": 90109325999,
+    "ratio_bytes": 0.9988299149857012,
+    "missing": 1,
+    "missing_names": [
+     "electron43-43.8.4-1-riscv64.pkg.tar.zst"
+    ]
+   },
+   "age_seconds": 5625,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/riscv64/extra/extra.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.228356,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/riscv64/extra/0ad-0.28.0-3-riscv64.pkg.tar.zst",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.152106,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "x86_64-core",
+   "arch": "x86_64",
+   "repo": "core",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/x86_64/core",
+   "upstream": {
+    "ok": true,
+    "server": "https://geo.mirror.pkgbuild.com/core/os/x86_64",
+    "sha256": "ff3f7148c8393ae5402545999f5cbcd3ba685c89001d09851e7004c6b5bedcee",
+    "files": 299,
+    "bytes": 1977374004,
+    "newest_builddate": 1793266461,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.158968,
+    "fetched": "2026-10-31T12:20:21Z",
+    "created": "2026-10-31T12:22:47Z",
+    "run": "41200639386",
+    "db_sha256": "ff3f7148c8393ae5402545999f5cbcd3ba685c89001d09851e7004c6b5bedcee",
+    "files": 299,
+    "bytes": 1977374004,
+    "newest_builddate": 1793266461
+   },
+   "current": true,
+   "coverage": {
+    "files": 299,
+    "of_files": 299,
+    "ratio_files": 1,
+    "bytes": 1977374004,
+    "of_bytes": 1977374004,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 5625,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/x86_64/core/core.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.249792,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/x86_64/core/acl-2.4.0-1-x86_64.pkg.tar.zst",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.315479,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "x86_64-extra",
+   "arch": "x86_64",
+   "repo": "extra",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/x86_64/extra",
+   "upstream": {
+    "ok": true,
+    "server": "https://geo.mirror.pkgbuild.com/extra/os/x86_64",
+    "sha256": "09be7c514216329a63fbbf57680b611ac3019cac9c3e5bb5a705891ca7653ee8",
+    "files": 15176,
+    "bytes": 116301928820,
+    "newest_builddate": 1793454666,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.156691,
+    "fetched": "2026-10-31T12:20:21Z",
+    "created": "2026-10-31T12:23:05Z",
+    "run": "41200639386",
+    "db_sha256": "be934fed8c3d5862adf632e2531c210c7dca19e1723baf0eca43ebe4f76f89cb",
+    "files": 15176,
+    "bytes": 116301008012,
+    "newest_builddate": 1793448828
+   },
+   "current": false,
+   "coverage": {
+    "files": 15146,
+    "of_files": 15176,
+    "ratio_files": 0.9980231945176594,
+    "bytes": 115855468036,
+    "of_bytes": 116301928820,
+    "ratio_bytes": 0.9961611919206346,
+    "missing": 30,
+    "missing_names": [
+     "avisynthplus-3.7.6-1-x86_64.pkg.tar.zst",
+     "cargo-binstall-1.26.2-1-x86_64.pkg.tar.zst",
+     "cargo-bundle-licenses-5.0.0-1-x86_64.pkg.tar.zst",
+     "cryptol-3.3.0-185-x86_64.pkg.tar.zst",
+     "enlightenment-0.28.0-2-x86_64.pkg.tar.zst",
+     "errands-51.0-1-x86_64.pkg.tar.zst",
+     "gnome-shell-extension-desktop-icons-ng-51.2.0-1-any.pkg.tar.zst",
+     "gperftools-2.19.2-1-x86_64.pkg.tar.zst",
+     "graphs-2.0.9-1-x86_64.pkg.tar.zst",
+     "haskell-cracknum-3.9-9-x86_64.pkg.tar.zst",
+     "haskell-sbv-10.7-1-x86_64.pkg.tar.zst",
+     "jnettop-0.13.0-10-x86_64.pkg.tar.zst",
+     "komikku-51.2.1-1-any.pkg.tar.zst",
+     "libolm-3.2.16-7-x86_64.pkg.tar.zst",
+     "onefetch-3.2.0-1-x86_64.pkg.tar.zst",
+     "phodav-3.2-1-x86_64.pkg.tar.zst",
+     "python-caldav-3.7.0-1-any.pkg.tar.zst",
+     "python-generic-1.1.8-1-any.pkg.tar.zst",
+     "python-hf-xet-1.8.0-1-x86_64.pkg.tar.zst",
+     "python-huggingface-hub-1:2.4.0-1-any.pkg.tar.zst"
+    ]
+   },
+   "age_seconds": 5625,
+   "lag_seconds": 5838,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/x86_64/extra/extra.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.20902,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/x86_64/extra/0ad-0.28.0-3-x86_64.pkg.tar.zst",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.151267,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  },
+  {
+   "target": "x86_64-multilib",
+   "arch": "x86_64",
+   "repo": "multilib",
+   "repository": "ghcr.io/nemo-010/mirror-archlinux/x86_64/multilib",
+   "upstream": {
+    "ok": true,
+    "server": "https://geo.mirror.pkgbuild.com/multilib/os/x86_64",
+    "sha256": "1e7d1860dd5ba41b486f5d7445af1b2d7fa082279b4933b588ea4d6e8c3ee3bb",
+    "files": 182,
+    "bytes": 372177227,
+    "newest_builddate": 1793394696,
+    "tried": [],
+    "error": null
+   },
+   "mirror": {
+    "state": "promoted",
+    "error": null,
+    "manifest_code": 200,
+    "manifest_seconds": 0.160019,
+    "fetched": "2026-10-30T22:15:41Z",
+    "created": "2026-10-30T22:20:16Z",
+    "run": "41136912274",
+    "db_sha256": "1e7d1860dd5ba41b486f5d7445af1b2d7fa082279b4933b588ea4d6e8c3ee3bb",
+    "files": 182,
+    "bytes": 372177227,
+    "newest_builddate": 1793394696
+   },
+   "current": true,
+   "coverage": {
+    "files": 182,
+    "of_files": 182,
+    "ratio_files": 1,
+    "bytes": 372177227,
+    "of_bytes": 372177227,
+    "ratio_bytes": 1,
+    "missing": 0,
+    "missing_names": []
+   },
+   "age_seconds": 56305,
+   "lag_seconds": 0,
+   "worker": {
+    "db": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/x86_64/multilib/multilib.db",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.221856,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    },
+    "package": {
+     "url": "https://ghcr.mirror.archlinux.pkgforge.dev/x86_64/multilib/cmucl-21e-1-x86_64.pkg.tar.zst",
+     "code": 302,
+     "expect": 302,
+     "seconds": 0.136989,
+     "location": "pkg-containers.githubusercontent.com",
+     "ok": true,
+     "error": null
+    }
+   }
+  }
+ ]
+}

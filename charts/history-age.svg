@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="402" viewBox="0 0 760 402" role="img" aria-labelledby="title desc">
+<title id="title">Snapshot age, last 30 days</title>
+<desc id="desc">Age of the oldest promoted snapshot per architecture over time, on a log scale, against the sync interval. With more than 2 days of history, one point per 6 hours, the largest of each.</desc>
+<style>.bg{fill:#fcfcfb;stroke:rgba(11,11,11,.10)}text{font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif}.tt{font-size:16px;font-weight:600;fill:#0b0b0b}.hd{font-size:30px;font-weight:600;fill:#0b0b0b}.sub{font-size:13px;fill:#52514e}.lb{font-size:12px;fill:#0b0b0b}.gr{font-size:12px;font-weight:600;fill:#52514e;paint-order:stroke;stroke:#fcfcfb;stroke-width:5px;stroke-linejoin:round}.vl{font-size:12px;fill:#0b0b0b;font-variant-numeric:tabular-nums}.mu{fill:#6f6e69}.lg{font-size:12px;fill:#52514e}.tk{font-size:11px;fill:#6f6e69;font-variant-numeric:tabular-nums}.ax{font-size:12px;fill:#52514e}.note{font-size:13px;fill:#6f6e69}.grid{stroke:#e9e8e3;stroke-width:1}.base{stroke:#c3c2b7;stroke-width:1}.ref{stroke:#7d7b75;stroke-width:1}.lead{stroke:#c3c2b7;stroke-width:1;fill:none}.track{fill:#ebeae5}.ring{stroke:#fcfcfb;stroke-width:2}.cut{stroke:#fcfcfb;stroke-width:2}.line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}.hollow{fill:none;stroke:#898781;stroke-width:1.5}.s1{fill:#2a78d6}.l1{stroke:#2a78d6}.s2{fill:#eb6834}.l2{stroke:#eb6834}.s3{fill:#1baf7a}.l3{stroke:#1baf7a}.s4{fill:#eda100}.l4{stroke:#eda100}.s5{fill:#e87ba4}.l5{stroke:#e87ba4}.s6{fill:#008300}.l6{stroke:#008300}.s7{fill:#4a3aa7}.l7{stroke:#4a3aa7}.s8{fill:#e34948}.l8{stroke:#e34948}.s0{fill:#a3a29c}.l0{stroke:#a3a29c}.st-good{fill:#0ca30c}.st-warning{fill:#fab219}.st-critical{fill:#d03b3b}.st-none{fill:#898781}.st-unknown{fill:#898781}@media (prefers-color-scheme:dark){.bg{fill:#1a1a19;stroke:rgba(255,255,255,.10)}.tt,.hd,.lb,.vl{fill:#ffffff}.sub,.gr,.ax,.lg{fill:#c3c2b7}.tk,.note,.mu{fill:#9a9890}.grid{stroke:#2a2a28}.base,.lead{stroke:#3d3d3a}.ref{stroke:#9a9890}.track{fill:#2e2e2c}.ring,.cut,.gr{stroke:#1a1a19}.s1{fill:#3987e5}.l1{stroke:#3987e5}.s2{fill:#d95926}.l2{stroke:#d95926}.s3{fill:#199e70}.l3{stroke:#199e70}.s4{fill:#c98500}.l4{stroke:#c98500}.s5{fill:#d55181}.l5{stroke:#d55181}.s6{fill:#008300}.l6{stroke:#008300}.s7{fill:#9085e9}.l7{stroke:#9085e9}.s8{fill:#e66767}.l8{stroke:#e66767}.s0{fill:#6b6a65}.l0{stroke:#6b6a65}}</style>
+<rect class="bg" x="0.5" y="0.5" width="759" height="401" rx="12"/>
+<text x="24.0" y="40.0" class="tt">Snapshot age, last 30 days</text>
+<text x="24.0" y="82.0" class="hd">16.2 d</text>
+<text x="121.5" y="79.0" class="sub">oldest snapshot now. One line per architecture, since Oct 14, 17:31 UTC, log scale.</text>
+<path d="M23.0 108.0h12" class="line l1"/>
+<text x="40.0" y="112.0" class="lg">x86_64</text>
+<path d="M97.8 108.0h12" class="line l2"/>
+<text x="114.8" y="112.0" class="lg">aarch64</text>
+<path d="M178.1 108.0h12" class="line l3"/>
+<text x="195.1" y="112.0" class="lg">armv7h</text>
+<path d="M255.3 108.0h12" class="line l4"/>
+<text x="272.3" y="112.0" class="lg">loong64</text>
+<path d="M332.8 108.0h12" class="line l5"/>
+<text x="349.8" y="112.0" class="lg">riscv64</text>
+<path d="M410.2 108.0h12" class="line ref"/>
+<text x="427.2" y="112.0" class="lg">sync every 3 h</text>
+<path d="M70.0 338.0H634.9" class="base"/>
+<text x="62.0" y="342.0" class="tk" text-anchor="end">30 min</text>
+<path d="M70.0 318.9H634.9" class="grid"/>
+<text x="62.0" y="322.9" class="tk" text-anchor="end">1 h</text>
+<path d="M70.0 288.7H634.9" class="grid"/>
+<text x="62.0" y="292.7" class="tk" text-anchor="end">3 h</text>
+<path d="M70.0 269.7H634.9" class="grid"/>
+<text x="62.0" y="273.7" class="tk" text-anchor="end">6 h</text>
+<path d="M70.0 250.6H634.9" class="grid"/>
+<text x="62.0" y="254.6" class="tk" text-anchor="end">12 h</text>
+<path d="M70.0 231.5H634.9" class="grid"/>
+<text x="62.0" y="235.5" class="tk" text-anchor="end">1 d</text>
+<path d="M70.0 201.3H634.9" class="grid"/>
+<text x="62.0" y="205.3" class="tk" text-anchor="end">3 d</text>
+<path d="M70.0 178.0H634.9" class="grid"/>
+<text x="62.0" y="182.0" class="tk" text-anchor="end">7 d</text>
+<path d="M70.0 138.0H634.9" class="grid"/>
+<text x="62.0" y="142.0" class="tk" text-anchor="end">30 d</text>
+<path d="M213.2 338.0v4" class="base"/>
+<text x="213.2" y="356.0" class="tk" text-anchor="middle">Oct 19</text>
+<path d="M380.8 338.0v4" class="base"/>
+<text x="380.8" y="356.0" class="tk" text-anchor="middle">Oct 24</text>
+<path d="M548.4 338.0v4" class="base"/>
+<text x="548.4" y="356.0" class="tk" text-anchor="middle">Oct 29</text>
+<path d="M70.0 288.7H634.9" class="ref"/>
+<path d="M70.0 241.1L79.0 232.2L81.3 230.3L99.2 274.8L109.5 259.2L119.8 255.0L128.5 246.3L135.9 240.0L145.6 265.2L153.2 249.4L161.1 239.3L169.4 231.5L178.9 229.1L186.0 261.8L196.0 244.1L201.9 239.0L212.7 262.3L219.9 248.3L222.9 244.2L234.1 232.5L246.6 223.5L254.3 219.2L261.3 215.7L268.2 212.7L280.1 210.6L286.8 256.9L296.7 241.7L304.9 234.0L310.7 276.6L321.4 249.9L330.3 238.4L337.8 231.6L345.5 271.3L354.1 251.1L363.6 238.8L371.7 237.2L380.1 267.6L387.2 251.7L396.1 239.6L403.5 232.5L413.3 229.4L421.8 227.9L430.2 222.4L439.3 217.6L447.2 213.9L454.6 211.0L457.7 221.7L468.2 216.3L476.8 212.8L489.4 230.4L496.7 225.1L504.9 222.9L512.5 229.2L523.0 222.3L523.7 221.8L533.8 217.1L547.8 229.2L552.5 225.9L563.0 219.7L572.3 216.7L579.2 264.0L584.9 251.8L596.0 237.4L604.6 229.8L613.2 225.0L623.5 263.7L626.0 257.8L634.9 243.3" class="line l1"><title>x86_64</title></path>
+<path d="M79.0 267.5L81.3 261.2L99.2 274.8L109.5 249.8L119.8 236.9L128.5 229.4L135.9 224.3L145.6 218.8L153.2 215.1L161.1 211.8L169.4 208.6L178.9 205.4L186.0 203.3L196.0 200.5L201.9 199.0L212.7 196.4L219.9 194.8L222.9 194.1L234.1 191.9L246.6 189.5L254.3 188.2L261.3 187.0L268.2 185.9L280.1 184.1L286.8 183.2L296.7 181.8L304.9 180.7L310.7 180.0L321.4 178.7L330.3 177.6L337.8 176.8L345.5 175.9L354.1 175.0L363.6 174.0L371.7 173.2L380.1 172.4L387.2 171.7L396.1 170.9L403.5 170.3L413.3 169.4L421.8 168.7L430.2 168.0L439.3 167.3L447.2 166.6L454.6 166.1L457.7 165.8L468.2 165.1L476.8 164.4L489.4 163.6L496.7 163.1L504.9 162.5L512.5 162.0L523.0 161.3L523.7 161.3L533.8 160.6L547.8 159.8L552.5 159.5L563.0 158.9L572.3 158.3L579.2 157.9L584.9 157.6L596.0 157.0L604.6 156.5L613.2 156.1L623.5 155.6L626.0 155.4L634.9 155.0" class="line l2"><title>aarch64</title></path>
+<path d="M79.0 267.5L81.3 261.2L99.2 274.8L109.5 249.8L119.8 236.9L128.5 229.4L135.9 224.3L145.6 218.8L153.2 215.1L161.1 211.8L169.4 208.6L178.9 205.4L186.0 203.3L196.0 200.5L201.9 199.0L212.7 196.4L219.9 194.8L222.9 194.1L234.1 191.9L246.6 189.5L254.3 188.2L261.3 187.0L268.2 185.9L280.1 184.1L286.8 183.2L296.7 181.8L304.9 180.7L310.7 180.0L321.4 178.7L330.3 177.6L337.8 176.8L345.5 175.9L354.1 175.0L363.6 174.0L371.7 173.2L380.1 172.4L387.2 171.7L396.1 170.9L403.5 170.3L413.3 169.4L421.8 168.7L430.2 168.0L439.3 167.3L447.2 166.6L454.6 166.1L457.7 165.8L468.2 165.1L476.8 164.4L489.4 163.6L496.7 163.1L504.9 162.5L512.5 162.0L523.0 161.3L523.7 161.3L533.8 160.6L547.8 159.8L552.5 159.5L563.0 158.9L572.3 158.3L579.2 157.9L584.9 157.6L596.0 157.0L604.6 156.5L613.2 156.1L623.5 155.6L626.0 155.4L634.9 155.0" class="line l3"><title>armv7h</title></path>
+<path d="M79.0 267.5L81.3 261.2L99.2 274.8L109.5 259.2L119.8 253.1L128.5 242.9L135.9 267.0L145.6 247.3L153.2 239.1L161.1 268.1L169.4 252.6L178.9 261.8L186.0 248.3L196.0 236.2L201.9 231.1L212.7 223.5L219.9 219.4L222.9 217.9L234.1 212.8L246.6 208.0L254.3 205.5L261.3 204.1L268.2 265.7L280.1 243.6L286.8 236.2L296.7 228.0L304.9 222.6L310.7 219.4L321.4 214.3L330.3 211.2L337.8 267.3L345.5 250.3L354.1 239.1L363.6 230.4L371.7 224.7L380.1 219.7L387.2 217.9L396.1 258.6L403.5 245.9L413.3 234.9L421.8 228.7L430.2 266.2L439.3 247.8L447.2 238.0L454.6 231.3L457.7 228.8L468.2 222.0L476.8 217.8L489.4 223.7L496.7 260.0L504.9 252.4L512.5 241.6L523.0 231.4L523.7 230.7L533.8 223.7L547.8 216.2L552.5 214.1L563.0 209.9L572.3 206.6L579.2 204.4L584.9 203.2L596.0 222.6L604.6 217.9L613.2 278.2L623.5 251.2L626.0 247.3L634.9 238.9" class="line l4"><title>loong64</title></path>
+<path d="M79.0 267.5L81.3 261.2L99.2 274.8L109.5 249.8L119.8 238.0L128.5 270.7L135.9 282.9L145.6 265.2L153.2 249.4L161.1 239.3L169.4 231.5L178.9 229.1L186.0 261.8L196.0 244.1L201.9 237.5L212.7 228.2L219.9 223.4L222.9 221.6L234.1 217.1L246.6 263.6L254.3 258.9L261.3 246.5L268.2 242.0L280.1 268.6L286.8 256.9L296.7 241.7L304.9 233.4L310.7 229.7L321.4 262.4L330.3 248.4L337.8 267.3L345.5 253.3L354.1 264.1L363.6 246.3L371.7 271.9L380.1 283.8L387.2 264.5L396.1 247.3L403.5 272.7L413.3 253.0L421.8 268.8L430.2 250.1L439.3 238.4L447.2 231.1L454.6 225.7L457.7 223.7L468.2 217.9L476.8 213.9L489.4 212.0L496.7 260.0L504.9 261.9L512.5 247.7L523.0 235.4L523.7 234.7L533.8 226.7L547.8 221.7L552.5 266.8L563.0 246.0L572.3 235.4L579.2 283.9L584.9 262.8L596.0 243.4L604.6 234.2L613.2 228.7L623.5 263.7L626.0 257.8L634.9 243.3" class="line l5"><title>riscv64</title></path>
+<path d="M640.9 155.0L646.9 170.0" class="lead"/>
+<path d="M640.9 243.3L646.9 253.9" class="lead"/>
+<path d="M640.9 243.3L646.9 268.9" class="lead"/>
+<circle cx="634.9" cy="155.0" r="4" class="s2 ring"><title>aarch64 16.2 d</title></circle>
+<text x="650.9" y="159.0" class="vl">aarch64<tspan class="mu" dx="5">16.2 d</tspan></text>
+<circle cx="634.9" cy="155.0" r="4" class="s3 ring"><title>armv7h 16.2 d</title></circle>
+<text x="650.9" y="174.0" class="vl">armv7h<tspan class="mu" dx="5">16.2 d</tspan></text>
+<circle cx="634.9" cy="238.9" r="4" class="s4 ring"><title>loong64 18.4 h</title></circle>
+<text x="650.9" y="242.9" class="vl">loong64<tspan class="mu" dx="5">18.4 h</tspan></text>
+<circle cx="634.9" cy="243.3" r="4" class="s5 ring"><title>riscv64 15.6 h</title></circle>
+<text x="650.9" y="257.9" class="vl">riscv64<tspan class="mu" dx="5">15.6 h</tspan></text>
+<circle cx="634.9" cy="243.3" r="4" class="s1 ring"><title>x86_64 15.6 h</title></circle>
+<text x="650.9" y="272.9" class="vl">x86_64<tspan class="mu" dx="5">15.6 h</tspan></text>
+<text x="352.4" y="380.0" class="ax" text-anchor="middle">Time, UTC</text>
+<text class="ax" text-anchor="middle" transform="translate(30.0 238.0) rotate(-90)">Age, log scale</text>
+</svg>
