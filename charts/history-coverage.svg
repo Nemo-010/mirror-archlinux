@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="402" viewBox="0 0 760 402" role="img" aria-labelledby="title desc">
+<title id="title">Coverage, last 30 days</title>
+<desc id="desc">Share of upstream files in the mirror per architecture over time. A repository that a run could not read counts with its last measured files. With more than 2 days of history, one point per 6 hours, the last value of each.</desc>
+<style>.bg{fill:#fcfcfb;stroke:rgba(11,11,11,.10)}text{font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif}.tt{font-size:16px;font-weight:600;fill:#0b0b0b}.hd{font-size:30px;font-weight:600;fill:#0b0b0b}.sub{font-size:13px;fill:#52514e}.lb{font-size:12px;fill:#0b0b0b}.gr{font-size:12px;font-weight:600;fill:#52514e;paint-order:stroke;stroke:#fcfcfb;stroke-width:5px;stroke-linejoin:round}.vl{font-size:12px;fill:#0b0b0b;font-variant-numeric:tabular-nums}.mu{fill:#6f6e69}.lg{font-size:12px;fill:#52514e}.tk{font-size:11px;fill:#6f6e69;font-variant-numeric:tabular-nums}.ax{font-size:12px;fill:#52514e}.note{font-size:13px;fill:#6f6e69}.grid{stroke:#e9e8e3;stroke-width:1}.base{stroke:#c3c2b7;stroke-width:1}.ref{stroke:#7d7b75;stroke-width:1}.lead{stroke:#c3c2b7;stroke-width:1;fill:none}.track{fill:#ebeae5}.ring{stroke:#fcfcfb;stroke-width:2}.cut{stroke:#fcfcfb;stroke-width:2}.line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}.hollow{fill:none;stroke:#898781;stroke-width:1.5}.s1{fill:#2a78d6}.l1{stroke:#2a78d6}.s2{fill:#eb6834}.l2{stroke:#eb6834}.s3{fill:#1baf7a}.l3{stroke:#1baf7a}.s4{fill:#eda100}.l4{stroke:#eda100}.s5{fill:#e87ba4}.l5{stroke:#e87ba4}.s6{fill:#008300}.l6{stroke:#008300}.s7{fill:#4a3aa7}.l7{stroke:#4a3aa7}.s8{fill:#e34948}.l8{stroke:#e34948}.s0{fill:#a3a29c}.l0{stroke:#a3a29c}.st-good{fill:#0ca30c}.st-warning{fill:#fab219}.st-critical{fill:#d03b3b}.st-none{fill:#898781}.st-unknown{fill:#898781}@media (prefers-color-scheme:dark){.bg{fill:#1a1a19;stroke:rgba(255,255,255,.10)}.tt,.hd,.lb,.vl{fill:#ffffff}.sub,.gr,.ax,.lg{fill:#c3c2b7}.tk,.note,.mu{fill:#9a9890}.grid{stroke:#2a2a28}.base,.lead{stroke:#3d3d3a}.ref{stroke:#9a9890}.track{fill:#2e2e2c}.ring,.cut,.gr{stroke:#1a1a19}.s1{fill:#3987e5}.l1{stroke:#3987e5}.s2{fill:#d95926}.l2{stroke:#d95926}.s3{fill:#199e70}.l3{stroke:#199e70}.s4{fill:#c98500}.l4{stroke:#c98500}.s5{fill:#d55181}.l5{stroke:#d55181}.s6{fill:#008300}.l6{stroke:#008300}.s7{fill:#9085e9}.l7{stroke:#9085e9}.s8{fill:#e66767}.l8{stroke:#e66767}.s0{fill:#6b6a65}.l0{stroke:#6b6a65}}</style>
+<rect class="bg" x="0.5" y="0.5" width="759" height="401" rx="12"/>
+<text x="24.0" y="40.0" class="tt">Coverage, last 30 days</text>
+<text x="24.0" y="82.0" class="hd">99.9%</text>
+<text x="131.1" y="64.0" class="sub">of upstream files in the mirror now, in 15 of 21 repositories. One line per architecture, since</text>
+<text x="131.1" y="81.0" class="sub">Oct 14, 17:31 UTC.</text>
+<path d="M23.0 108.0h12" class="line l1"/>
+<text x="40.0" y="112.0" class="lg">x86_64</text>
+<path d="M97.8 108.0h12" class="line l2"/>
+<text x="114.8" y="112.0" class="lg">aarch64</text>
+<path d="M178.1 108.0h12" class="line l3"/>
+<text x="195.1" y="112.0" class="lg">armv7h</text>
+<path d="M255.3 108.0h12" class="line l4"/>
+<text x="272.3" y="112.0" class="lg">loong64</text>
+<path d="M332.8 108.0h12" class="line l5"/>
+<text x="349.8" y="112.0" class="lg">riscv64</text>
+<path d="M70.0 338.0H634.2" class="base"/>
+<text x="62.0" y="342.0" class="tk" text-anchor="end">0%</text>
+<path d="M70.0 288.0H634.2" class="grid"/>
+<text x="62.0" y="292.0" class="tk" text-anchor="end">25%</text>
+<path d="M70.0 238.0H634.2" class="grid"/>
+<text x="62.0" y="242.0" class="tk" text-anchor="end">50%</text>
+<path d="M70.0 188.0H634.2" class="grid"/>
+<text x="62.0" y="192.0" class="tk" text-anchor="end">75%</text>
+<path d="M70.0 138.0H634.2" class="grid"/>
+<text x="62.0" y="142.0" class="tk" text-anchor="end">100%</text>
+<path d="M170.0 338.0v4" class="base"/>
+<text x="170.0" y="356.0" class="tk" text-anchor="middle">Oct 19</text>
+<path d="M287.1 338.0v4" class="base"/>
+<text x="287.1" y="356.0" class="tk" text-anchor="middle">Oct 24</text>
+<path d="M404.2 338.0v4" class="base"/>
+<text x="404.2" y="356.0" class="tk" text-anchor="middle">Oct 29</text>
+<path d="M521.3 338.0v4" class="base"/>
+<text x="521.3" y="356.0" class="tk" text-anchor="middle">Nov 3</text>
+<path d="M70.0 334.1L76.3 138.0L77.9 138.2L85.6 338.0L90.4 140.6L97.6 138.0L104.8 138.0L110.8 138.0L116.1 138.0L122.8 138.0L128.2 138.0L133.6 138.0L139.4 138.1L146.1 138.1L151.0 138.0L158.0 138.1L162.1 138.0L169.7 138.0L174.7 138.0L176.8 138.0L184.6 138.1L193.4 138.3L198.7 138.0L203.7 138.3L208.4 140.3L216.8 138.0L221.5 138.0L228.4 138.0L234.1 138.0L238.1 138.0L245.6 138.0L251.8 138.0L257.1 138.4L262.5 138.2L268.5 138.0L275.1 138.0L280.7 138.0L286.7 138.0L291.6 138.0L297.8 138.1L303.0 138.0L309.8 138.0L315.8 138.0L321.7 138.0L328.0 138.2L333.5 138.0L338.6 138.0L340.9 138.0L348.2 138.2L354.2 138.0L363.0 138.0L368.1 138.5L373.8 138.1L379.1 138.0L386.4 138.0L387.0 138.1L394.0 138.0L403.8 139.5L407.0 138.1L414.4 138.5L420.9 138.2L425.7 139.0L429.7 138.0L437.4 138.0L443.5 138.2L449.5 138.0L456.6 138.0L458.4 138.0L464.6 138.4L472.4 138.5L475.9 138.1L482.5 138.0L489.6 138.1L497.8 139.0L498.6 138.0L508.9 138.0L515.1 138.0L519.2 139.3L521.4 139.7L528.4 138.0L538.0 138.0L542.2 138.0L546.4 138.4L552.6 138.0L560.9 138.1L566.4 138.1L571.0 138.0L579.5 138.0L585.2 138.0L591.3 138.0L592.1 138.1L598.8 138.1L608.0 138.0L612.4 138.1L620.8 138.3L622.6 138.1L629.8 138.4L634.2 138.0" class="line l1"><title>x86_64</title></path>
+<path d="M70.0 338.0L76.3 138.0L77.9 138.3L85.6 338.0L90.4 138.7L97.6 138.0L104.8 138.0L110.8 138.0L116.1 138.0L122.8 138.0L128.2 138.0L133.6 138.0L139.4 138.0L146.1 138.0L151.0 138.0L158.0 138.0L162.1 138.0L169.7 138.0L174.7 138.0L176.8 138.0L184.6 138.0L193.4 138.0L198.7 138.0L203.7 138.0L208.4 138.0L216.8 138.0L221.5 138.0L228.4 138.0L234.1 138.0L238.1 138.0L245.6 138.0L251.8 138.0L257.1 138.0L262.5 138.0L268.5 138.0L275.1 138.0L280.7 138.0L286.7 138.0L291.6 138.0L297.8 138.0L303.0 138.0L309.8 138.0L315.8 138.0L321.7 138.0L328.0 138.2L333.5 138.0L338.6 138.0L340.9 138.0L348.2 139.3L354.2 138.0L363.0 138.0L368.1 138.0L373.8 138.0L379.1 138.0L386.4 138.0L387.0 138.0L394.0 138.0L403.8 138.0L407.0 138.0L414.4 138.0L420.9 138.0L425.7 138.6L429.7 138.0L437.4 138.0L443.5 138.0L449.5 138.0L456.6 138.0L458.4 138.0L464.6 138.0L472.4 138.1L475.9 138.0L482.5 138.0L489.6 138.4L497.8 138.9L498.6 138.0L508.9 138.1L515.1 138.0L519.2 138.0L521.4 138.7L528.4 138.0L538.0 138.0L542.2 138.0L546.4 138.5L552.6 138.0L560.9 138.0L566.4 138.0L571.0 138.0L579.5 138.0L585.2 138.0L591.3 138.0L592.1 138.0L598.8 138.0L608.0 138.0L612.4 138.0L620.8 138.0L622.6 138.0L629.8 138.5L634.2 138.0" class="line l2"><title>aarch64</title></path>
+<path d="M70.0 338.0L76.3 138.0L77.9 138.3L85.6 338.0L90.4 138.0L97.6 138.0L104.8 138.0L110.8 138.0L116.1 138.0L122.8 138.0L128.2 138.0L133.6 138.0L139.4 138.0L146.1 138.0L151.0 138.0L158.0 138.0L162.1 138.0L169.7 138.0L174.7 138.0L176.8 138.0L184.6 138.0L193.4 138.0L198.7 138.0L203.7 138.0L208.4 138.0L216.8 138.0L221.5 138.0L228.4 138.0L234.1 138.0L238.1 138.0L245.6 138.0L251.8 138.0L257.1 138.0L262.5 138.0L268.5 138.0L275.1 138.0L280.7 138.0L286.7 138.0L291.6 138.0L297.8 138.0L303.0 138.0L309.8 138.0L315.8 138.0L321.7 138.0L328.0 138.2L333.5 138.0L338.6 138.0L340.9 138.6L348.2 138.2L354.2 138.0L363.0 138.0L368.1 138.0L373.8 138.0L379.1 138.0L386.4 138.0L387.0 138.0L394.0 138.0L403.8 138.0L407.0 138.0L414.4 138.0L420.9 138.1L425.7 138.3L429.7 138.0L437.4 138.0L443.5 138.0L449.5 138.0L456.6 138.0L458.4 138.0L464.6 138.0L472.4 138.0L475.9 138.0L482.5 138.0L489.6 138.0L497.8 138.9L498.6 138.0L508.9 138.1L515.1 138.0L519.2 138.0L521.4 138.7L528.4 138.0L538.0 138.0L542.2 138.0L546.4 140.8L552.6 138.0L560.9 138.0L566.4 138.0L571.0 138.0L579.5 138.0L585.2 138.2L591.3 138.0L592.1 138.0L598.8 138.0L608.0 138.0L612.4 138.0L620.8 138.0L622.6 138.0L629.8 138.0L634.2 138.0" class="line l3"><title>armv7h</title></path>
+<path d="M70.0 338.0L76.3 138.0L77.9 138.0L85.6 338.0L90.4 334.0L97.6 138.0L104.8 138.0L110.8 138.0L116.1 138.0L122.8 138.0L128.2 138.0L133.6 138.0L139.4 138.0L146.1 138.0L151.0 138.0L158.0 138.0L162.1 138.0L169.7 138.0L174.7 138.0L176.8 138.0L184.6 138.0L193.4 138.0L198.7 138.0L203.7 138.0L208.4 138.0L216.8 138.0L221.5 138.0L228.4 138.0L234.1 138.0L238.1 138.0L245.6 138.0L251.8 138.0L257.1 138.0L262.5 138.0L268.5 138.0L275.1 138.0L280.7 138.0L286.7 159.1L291.6 138.0L297.8 138.0L303.0 138.0L309.8 138.0L315.8 138.0L321.7 138.0L328.0 138.0L333.5 138.0L338.6 138.6L340.9 138.6L348.2 140.6L354.2 140.8L363.0 138.5L368.1 138.0L373.8 138.6L379.1 138.0L386.4 138.0L387.0 138.0L394.0 138.0L403.8 140.5L407.0 138.0L414.4 138.6L420.9 138.6L425.7 138.6L429.7 141.4L437.4 141.4L443.5 142.5L449.5 138.0L456.6 138.0L458.4 138.0L464.6 140.0L472.4 138.0L475.9 138.0L482.5 139.0L489.6 138.0L497.8 138.0L498.6 138.0L508.9 139.0L515.1 138.0L519.2 138.0L521.4 138.0L528.4 138.0L538.0 138.0L542.2 138.0L546.4 138.0L552.6 140.8L560.9 138.3L566.4 138.0L571.0 138.0L579.5 138.0L585.2 138.0L591.3 138.0L592.1 138.0L598.8 138.0L608.0 138.0L612.4 138.0L620.8 139.3L622.6 138.4L629.8 138.1L634.2 138.1" class="line l4"><title>loong64</title></path>
+<path d="M70.0 338.0L76.3 138.2L77.9 138.0L85.6 338.0L90.4 139.5L97.6 138.3L104.8 138.0L110.8 138.0L116.1 138.0L122.8 138.0L128.2 138.0L133.6 138.0L139.4 138.0L146.1 138.0L151.0 138.0L158.0 138.0L162.1 138.0L169.7 138.0L174.7 138.0L176.8 138.0L184.6 138.0L193.4 138.3L198.7 138.0L203.7 139.8L208.4 138.2L216.8 138.0L221.5 138.0L228.4 138.0L234.1 138.0L238.1 138.0L245.6 138.0L251.8 138.0L257.1 138.0L262.5 139.9L268.5 138.0L275.1 138.0L280.7 138.0L286.7 138.1L291.6 138.0L297.8 138.0L303.0 138.0L309.8 138.0L315.8 138.0L321.7 138.0L328.0 138.8L333.5 138.0L338.6 138.1L340.9 138.1L348.2 138.3L354.2 138.0L363.0 138.0L368.1 138.4L373.8 138.2L379.1 138.1L386.4 138.0L387.0 138.1L394.0 138.0L403.8 138.3L407.0 138.0L414.4 138.0L420.9 138.6L425.7 138.6L429.7 138.1L437.4 138.0L443.5 138.2L449.5 138.0L456.6 138.0L458.4 138.0L464.6 138.0L472.4 138.5L475.9 138.1L482.5 138.0L489.6 138.2L497.8 138.0L498.6 138.0L508.9 138.0L515.1 138.0L519.2 138.2L521.4 141.5L528.4 138.0L538.0 138.0L542.2 138.0L546.4 138.3L552.6 138.0L560.9 138.4L566.4 139.4L571.0 138.0L579.5 138.0L585.2 138.0L591.3 138.0L592.1 138.2L598.8 138.1L608.0 138.0L612.4 138.0L620.8 138.3L622.6 138.1L629.8 138.0L634.2 138.3" class="line l5"><title>riscv64</title></path>
+<path d="M640.2 138.0L646.2 153.0" class="lead"/>
+<path d="M640.2 138.0L646.2 168.0" class="lead"/>
+<path d="M640.2 138.1L646.2 183.0" class="lead"/>
+<path d="M640.2 138.3L646.2 198.0" class="lead"/>
+<circle cx="634.2" cy="138.0" r="4" class="s2 ring"><title>aarch64 100%</title></circle>
+<text x="650.2" y="142.0" class="vl">aarch64<tspan class="mu" dx="5">100%</tspan></text>
+<circle cx="634.2" cy="138.0" r="4" class="s3 ring"><title>armv7h 100%</title></circle>
+<text x="650.2" y="157.0" class="vl">armv7h<tspan class="mu" dx="5">100%</tspan></text>
+<circle cx="634.2" cy="138.0" r="4" class="s1 ring"><title>x86_64 100%</title></circle>
+<text x="650.2" y="172.0" class="vl">x86_64<tspan class="mu" dx="5">100%</tspan></text>
+<circle cx="634.2" cy="138.1" r="4" class="s4 ring"><title>loong64 99.9%</title></circle>
+<text x="650.2" y="187.0" class="vl">loong64<tspan class="mu" dx="5">99.9%</tspan></text>
+<circle cx="634.2" cy="138.3" r="4" class="s5 ring"><title>riscv64 99.8%</title></circle>
+<text x="650.2" y="202.0" class="vl">riscv64<tspan class="mu" dx="5">99.8%</tspan></text>
+<text x="352.1" y="380.0" class="ax" text-anchor="middle">Time, UTC</text>
+<text class="ax" text-anchor="middle" transform="translate(30.0 238.0) rotate(-90)">Share of upstream files</text>
+</svg>
